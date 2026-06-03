@@ -1,0 +1,25 @@
+# Maven
+target/
+*.class
+
+# Benchmarks (cloned repos)
+benchmarks/
+
+# IDE
+.idea/
+*.iml
+
+# Env / secrets
+*.env
+application-local.properties
+
+# OS
+.DS_Store
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Maven
+target/
