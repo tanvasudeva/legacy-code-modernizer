@@ -1,0 +1,23 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="10. Integration — Analysis API (needs Postgres + Neo4j)" type="MavenRunConfiguration" factoryName="Maven">
+    <MavenSettings>
+      <option name="myGeneralSettings" />
+      <option name="myRunnerSettings" />
+      <option name="myRunnerParameters">
+        <MavenRunnerParameters>
+          <option name="profiles">
+            <list />
+          </option>
+          <option name="goals">
+            <list>
+              <option value="test" />
+            </list>
+          </option>
+          <option name="workingDirPath" value="$PROJECT_DIR$/orchestrator" />
+          <option name="goalArguments" value="-Dtest=AnalysisControllerIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false" />
+        </MavenRunnerParameters>
+      </option>
+    </MavenSettings>
+    <method v="2" />
+  </configuration>
+</component>

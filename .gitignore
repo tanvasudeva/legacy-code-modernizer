@@ -5,8 +5,9 @@ target/
 # Benchmarks (cloned repos)
 benchmarks/
 
-# IDE
+# IDE — ignore workspace state but track shared run configs
 .idea/
+!.idea/runConfigurations/
 *.iml
 
 # Env / secrets
