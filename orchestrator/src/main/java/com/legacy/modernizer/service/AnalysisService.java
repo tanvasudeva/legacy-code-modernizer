@@ -49,7 +49,7 @@ public class AnalysisService {
         MigrationJob job = jobRepository.findById(jobId)
                 .orElseThrow(() -> new NoSuchElementException("Job not found: " + jobId));
 
-        job.setStatus(JobStatus.RUNNING);
+        job.setStatus(JobStatus.ANALYZING);
         jobRepository.save(job);
 
         try {
@@ -76,13 +76,13 @@ public class AnalysisService {
                     "packageNodes",  stats.packageNodes(),
                     "relationships", stats.relationships()));
             job.setMetadata(metadata);
-            job.setStatus(JobStatus.COMPLETED);
+            job.setStatus(JobStatus.DONE);
             jobRepository.save(job);
 
             Files.deleteIfExists(adjacencyFile);
             Files.deleteIfExists(clusterMapFile);
 
-            return new AnalysisResult(jobId, "COMPLETED",
+            return new AnalysisResult(jobId, "DONE",
                     stats.classNodes(), stats.packageNodes(), stats.relationships(),
                     (int) clusterMap.values().stream().distinct().count(), clusterMap);
 
