@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="4. Check All Services" type="ShConfigurationType">
+    <option name="SCRIPT_TEXT" value="echo '=== Postgres ===' &amp;&amp; docker exec lcm-postgres pg_isready -U postgres &amp;&amp; echo '' &amp;&amp; echo '=== Redis ===' &amp;&amp; redis-cli ping &amp;&amp; echo '' &amp;&amp; echo '=== Qdrant ===' &amp;&amp; curl -s http://localhost:6333/ | python3 -c &quot;import sys,json; d=json.load(sys.stdin); print('OK  version=' + d['version'])&quot; &amp;&amp; echo '' &amp;&amp; echo '=== Neo4j ===' &amp;&amp; curl -s http://localhost:7474 | python3 -c &quot;import sys,json; d=json.load(sys.stdin); print('OK  ' + d.get('neo4j_version','?'))&quot; &amp;&amp; echo '' &amp;&amp; echo '=== Ollama ===' &amp;&amp; (curl -sf http://localhost:11434 &amp;&gt;/dev/null &amp;&amp; echo 'OK  http://localhost:11434' || echo 'NOT running (optional)') &amp;&amp; echo '' &amp;&amp; echo '=== App ===' &amp;&amp; (curl -sf http://localhost:8080/actuator/health | python3 -c &quot;import sys,json; d=json.load(sys.stdin); print('OK  status=' + d['status'])&quot; || echo 'NOT running — start config 3')" />
+    <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+    <option name="SCRIPT_PATH" value="" />
+    <option name="SCRIPT_OPTIONS" value="" />
+    <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+    <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="INDEPENDENT_INTERPRETER_PATH" value="true" />
+    <option name="INTERPRETER_PATH" value="/bin/bash" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="EXECUTE_IN_TERMINAL" value="true" />
+    <option name="EXECUTE_SCRIPT_FILE" value="false" />
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>
