@@ -2,7 +2,9 @@ package com.legacy.modernizer.model;
 
 public enum JobStatus {
     PENDING,
-    RUNNING,
-    COMPLETED,
+    ANALYZING,
+    PLANNING,
+    GENERATING,
+    DONE,
     FAILED
 }

@@ -70,7 +70,7 @@ class AnalysisControllerIntegrationTest {
     @Test @Order(2)
     void responseContainsValidStats() {
         AnalysisResult r = post().getBody();
-        assertEquals("COMPLETED", r.status());
+        assertEquals("DONE", r.status());
         assertTrue(r.classNodes() > 0);
     }
 
@@ -96,7 +96,7 @@ class AnalysisControllerIntegrationTest {
 
     @Test @Order(6)
     void jobStatusIsCompleted() {
-        assertEquals(JobStatus.COMPLETED, jobRepository.findById(jobId).orElseThrow().getStatus());
+        assertEquals(JobStatus.DONE, jobRepository.findById(jobId).orElseThrow().getStatus());
     }
 
     @Test @Order(7)
