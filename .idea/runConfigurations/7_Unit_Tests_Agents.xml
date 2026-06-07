@@ -14,7 +14,7 @@
             </list>
           </option>
           <option name="workingDirPath" value="$PROJECT_DIR$/agents" />
-          <option name="goalArguments" value="-Dtest=ArchitectAgentTest,RefactorerAgentTest -Dsurefire.failIfNoSpecifiedTests=false" />
+          <option name="goalArguments" value="-Dtest=ArchitectAgentTest,RefactorerAgentTest,ServiceGeneratorAgentTest -Dsurefire.failIfNoSpecifiedTests=false" />
         </MavenRunnerParameters>
       </option>
     </MavenSettings>

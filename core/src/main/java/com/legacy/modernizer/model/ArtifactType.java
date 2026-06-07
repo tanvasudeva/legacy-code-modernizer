@@ -4,5 +4,7 @@ public enum ArtifactType {
     ORIGINAL,
     TRANSFORMED,
     TEST,
-    CONFIG
+    TEST_CODE,
+    CONFIG,
+    SERVICE_CODE
 }
