@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="3. OrchestratorApplication" type="Application" factoryName="Application">
+    <envs>
+      <env name="JAVA_HOME" value="/opt/homebrew/opt/openjdk@21" />
+      <env name="ANTHROPIC_API_KEY" value="" />
+    </envs>
+    <option name="MAIN_CLASS_NAME" value="com.legacy.modernizer.OrchestratorApplication" />
+    <option name="VM_PARAMETERS" value="-Dspring.profiles.active=local" />
+    <option name="WORKING_DIRECTORY" value="$MODULE_WORKING_DIR$" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
