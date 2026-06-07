@@ -1,0 +1,131 @@
+### Legacy Code Modernizer — API Requests
+### Run the app first (config 3) with Docker services up (config 1).
+### IntelliJ: open this file and click ▶ next to any request.
+
+@base = http://localhost:8080
+@petclinic = {{$projectDir}}/benchmarks/spring-petclinic/src/main/java
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HEALTH
+# ──────────────────────────────────────────────────────────────────────────────
+
+### App health
+GET {{base}}/actuator/health
+
+### App info
+GET {{base}}/actuator/info
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# JOBS  — lifecycle: create → analyze → index-rag → advance states
+# ──────────────────────────────────────────────────────────────────────────────
+
+### 1. Create a job pointing at PetClinic
+# @name createJob
+POST {{base}}/api/jobs
+Content-Type: application/json
+
+{
+  "name": "petclinic-modernisation",
+  "sourceDirectory": "{{$projectDir}}/benchmarks/spring-petclinic/src/main/java"
+}
+
+### 2. Get job (replace {id} with the id from step 1)
+GET {{base}}/api/jobs/1
+
+### 3. List all jobs
+GET {{base}}/api/jobs
+
+### 4. Run static analysis + Louvain clustering
+# Extracts class graph, ingests into Neo4j, runs Python Louvain, returns cluster map.
+POST {{base}}/api/jobs/1/analyze
+
+### 5. Advance job state (PENDING→ANALYZING→PLANNING→GENERATING→DONE)
+POST {{base}}/api/jobs/1/advance
+
+### 6. Mark job failed with a reason
+POST {{base}}/api/jobs/1/fail
+Content-Type: application/json
+
+{
+  "reason": "Source directory not found"
+}
+
+### 7. Retry a failed job (resets to PENDING)
+POST {{base}}/api/jobs/1/retry
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# RAG INDEXING  — chunk → CodeBERT embed → Qdrant upsert
+# ──────────────────────────────────────────────────────────────────────────────
+
+### 8. Index PetClinic source into Qdrant (job_1 collection)
+# Requires: Qdrant running on :6333  +  Python deps installed
+# First run downloads microsoft/codebert-base (~500 MB).
+# Typical time: 60–90 s on CPU.
+POST {{base}}/api/jobs/1/index-rag
+
+### Expected response:
+# {
+#   "jobId": 1,
+#   "collection": "job_1",
+#   "chunksIndexed": 79
+# }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# QDRANT  — verify collection directly
+# ──────────────────────────────────────────────────────────────────────────────
+
+### 9. List all Qdrant collections
+GET http://localhost:6333/collections
+
+### 10. Describe job_1 collection
+GET http://localhost:6333/collections/job_1
+
+### 11. Count points in job_1
+GET http://localhost:6333/collections/job_1/points/count
+
+### 12. Retrieve a single point by id (0-indexed)
+GET http://localhost:6333/collections/job_1/points/0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# NEO4J  — verify graph ingestion
+# ──────────────────────────────────────────────────────────────────────────────
+
+### 13. Neo4j REST discovery
+GET http://localhost:7474/
+
+### 14. Cypher: count all class nodes
+POST http://localhost:7474/db/neo4j/tx/commit
+Content-Type: application/json
+Authorization: Basic bmVvNGo6bmVvNGpfcGFzc3dvcmQ=
+
+{
+  "statements": [
+    { "statement": "MATCH (c:Class) RETURN count(c) AS total" }
+  ]
+}
+
+### 15. Cypher: show top-10 classes by outgoing call edges
+POST http://localhost:7474/db/neo4j/tx/commit
+Content-Type: application/json
+Authorization: Basic bmVvNGo6bmVvNGpfcGFzc3dvcmQ=
+
+{
+  "statements": [
+    {
+      "statement": "MATCH (c:Class)-[:CALLS]->(t:Class) RETURN c.fqn AS caller, count(t) AS calls ORDER BY calls DESC LIMIT 10"
+    }
+  ]
+}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# REDIS  — verify stream state (run via terminal: redis-cli)
+# ──────────────────────────────────────────────────────────────────────────────
+# redis-cli XLEN agent:refactorer
+# redis-cli XLEN agent:test_writer
+# redis-cli XLEN agent:doc_generator
+# redis-cli XINFO GROUPS agent:refactorer
