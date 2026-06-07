@@ -1,0 +1,26 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="18. Integration — DocGenAgent (needs Postgres + ANTHROPIC_API_KEY)" type="MavenRunConfiguration" factoryName="Maven">
+    <MavenSettings>
+      <option name="myGeneralSettings" />
+      <option name="myRunnerSettings" />
+      <option name="myRunnerParameters">
+        <MavenRunnerParameters>
+          <option name="profiles">
+            <list />
+          </option>
+          <option name="goals">
+            <list>
+              <option value="test" />
+            </list>
+          </option>
+          <option name="workingDirPath" value="$PROJECT_DIR$/agents" />
+          <option name="goalArguments" value="-Dtest=DocGenIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false" />
+        </MavenRunnerParameters>
+      </option>
+    </MavenSettings>
+    <envs>
+      <env name="ANTHROPIC_API_KEY" value="" />
+    </envs>
+    <method v="2" />
+  </configuration>
+</component>
