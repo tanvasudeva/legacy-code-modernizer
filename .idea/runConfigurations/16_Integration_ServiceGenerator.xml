@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="7. Unit Tests — Agents (ArchitectAgent + RefactorerAgent)" type="MavenRunConfiguration" factoryName="Maven">
+  <configuration default="false" name="16. Integration — ServiceGenerator (needs Postgres + ANTHROPIC_API_KEY)" type="MavenRunConfiguration" factoryName="Maven">
     <MavenSettings>
       <option name="myGeneralSettings" />
       <option name="myRunnerSettings" />
@@ -14,10 +14,13 @@
             </list>
           </option>
           <option name="workingDirPath" value="$PROJECT_DIR$/agents" />
-          <option name="goalArguments" value="-Dtest=ArchitectAgentTest,RefactorerAgentTest,ServiceGeneratorAgentTest -Dsurefire.failIfNoSpecifiedTests=false" />
+          <option name="goalArguments" value="-Dtest=ServiceGeneratorIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false" />
         </MavenRunnerParameters>
       </option>
     </MavenSettings>
+    <envs>
+      <env name="ANTHROPIC_API_KEY" value="" />
+    </envs>
     <method v="2" />
   </configuration>
 </component>
