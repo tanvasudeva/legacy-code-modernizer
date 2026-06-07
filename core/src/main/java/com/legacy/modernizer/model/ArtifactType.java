@@ -6,5 +6,8 @@ public enum ArtifactType {
     TEST,
     TEST_CODE,
     CONFIG,
-    SERVICE_CODE
+    SERVICE_CODE,
+    OPENAPI_SPEC,
+    ADR,
+    RUNBOOK
 }
