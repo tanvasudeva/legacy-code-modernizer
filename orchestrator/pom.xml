@@ -48,7 +48,7 @@
             <version>${flyway.version}</version>
         </dependency>
 
-        <!-- LangChain4j core + Ollama -->
+        <!-- LangChain4j core + Ollama + baselines -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
@@ -56,6 +56,16 @@
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-ollama</artifactId>
+        </dependency>
+        <!-- OpenAI — GPT-4o single-prompt baseline (Phase 4.2) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+        </dependency>
+        <!-- Anthropic — Claude single-prompt baseline (Phase 4.2) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-anthropic</artifactId>
         </dependency>
     </dependencies>
 
