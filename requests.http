@@ -123,6 +123,15 @@ Authorization: Basic bmVvNGo6bmVvNGpfcGFzc3dvcmQ=
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# PHASE 3.4 — Bundle Assembler
+# ──────────────────────────────────────────────────────────────────────────────
+
+### 16. Download bundle ZIP for a job (replace 1 with your job ID)
+GET http://localhost:8080/api/jobs/1/bundle
+Accept: application/zip
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # REDIS  — verify stream state (run via terminal: redis-cli)
 # ──────────────────────────────────────────────────────────────────────────────
 # redis-cli XLEN agent:refactorer
