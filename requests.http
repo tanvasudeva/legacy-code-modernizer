@@ -123,6 +123,37 @@ Authorization: Basic bmVvNGo6bmVvNGpfcGFzc3dvcmQ=
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# PHASE 4.1 — Benchmark Runner
+# ──────────────────────────────────────────────────────────────────────────────
+
+### 16. List all registered benchmark repos
+GET http://localhost:8080/api/benchmark
+
+### 17. Run full pipeline for one repo (replace spring-petclinic with any repo name)
+POST http://localhost:8080/api/benchmark/spring-petclinic
+
+### 18. Run full pipeline for all 10 repos sequentially (long-running — prefer the Python script)
+POST http://localhost:8080/api/benchmark/all
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PHASE 4.2 — Baseline Systems
+# ──────────────────────────────────────────────────────────────────────────────
+
+### 19. Run both baselines (GPT-4o + Claude) for one repo
+POST http://localhost:8080/api/baseline/spring-petclinic
+
+### 20. Run only the GPT-4o single-prompt baseline for one repo
+POST http://localhost:8080/api/baseline/spring-petclinic/gpt4o
+
+### 21. Run only the Claude single-prompt baseline for one repo
+POST http://localhost:8080/api/baseline/spring-petclinic/claude
+
+### 22. Run both baselines for all 10 repos (long-running)
+POST http://localhost:8080/api/baseline/all
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # PHASE 3.4 — Bundle Assembler
 # ──────────────────────────────────────────────────────────────────────────────
 
