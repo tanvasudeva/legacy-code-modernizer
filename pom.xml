@@ -56,6 +56,11 @@
                 <artifactId>rag</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.legacy.modernizer</groupId>
+                <artifactId>evaluator</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- JavaParser -->
             <dependency>
