@@ -1,0 +1,86 @@
+{
+  "COMPILATION_SUCCESS__multi-agent": {
+    "mean": 0.6606,
+    "std": 0.1268,
+    "min": 0.4594,
+    "max": 0.8622,
+    "n": 10
+  },
+  "COMPILATION_SUCCESS__single-prompt-claude": {
+    "mean": 0.0,
+    "std": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "n": 10
+  },
+  "COMPILATION_SUCCESS__single-prompt-gpt4o": {
+    "mean": 0.0,
+    "std": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "n": 10
+  },
+  "COVERAGE__multi-agent": {
+    "mean": 0.3416,
+    "std": 0.053,
+    "min": 0.2867,
+    "max": 0.4576,
+    "n": 10
+  },
+  "COVERAGE__single-prompt-claude": {
+    "mean": 0.0,
+    "std": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "n": 10
+  },
+  "COVERAGE__single-prompt-gpt4o": {
+    "mean": 0.0,
+    "std": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "n": 10
+  },
+  "API_COMPLETENESS__multi-agent": {
+    "mean": 0.7669,
+    "std": 0.0691,
+    "min": 0.6404,
+    "max": 0.8851,
+    "n": 10
+  },
+  "API_COMPLETENESS__single-prompt-claude": {
+    "mean": 0.5416,
+    "std": 0.0718,
+    "min": 0.4147,
+    "max": 0.6631,
+    "n": 10
+  },
+  "API_COMPLETENESS__single-prompt-gpt4o": {
+    "mean": 0.5111,
+    "std": 0.0521,
+    "min": 0.4314,
+    "max": 0.5993,
+    "n": 10
+  },
+  "LLM_JUDGE_SCORE__multi-agent": {
+    "mean": 6.7671,
+    "std": 0.7077,
+    "min": 5.8339,
+    "max": 8.1518,
+    "n": 10
+  },
+  "LLM_JUDGE_SCORE__single-prompt-claude": {
+    "mean": 6.017,
+    "std": 0.4921,
+    "min": 5.2578,
+    "max": 6.8198,
+    "n": 10
+  },
+  "LLM_JUDGE_SCORE__single-prompt-gpt4o": {
+    "mean": 5.7041,
+    "std": 0.5792,
+    "min": 4.8572,
+    "max": 6.6403,
+    "n": 10
+  }
+}
