@@ -2,7 +2,7 @@
 """
 Phase 4.1/4.5 — Automated benchmark runner.
 
-Loops over all 10 benchmark repositories, calls the LCM REST API to run
+Loops over all 20 benchmark repositories, calls the LCM REST API to run
 the full multi-agent pipeline for each, and persists results to the
 results/{repo_name}/multi-agent/ directory.
 
@@ -37,6 +37,7 @@ import requests
 # ---------------------------------------------------------------------------
 
 ALL_REPOS = [
+    # Original 10
     {"name": "spring-petclinic",    "approx_loc":   5_000},
     {"name": "HikariCP",            "approx_loc":  15_000},
     {"name": "jhipster-sample-app", "approx_loc":  20_000},
@@ -47,6 +48,17 @@ ALL_REPOS = [
     {"name": "Activiti",            "approx_loc": 150_000},
     {"name": "openmrs-core",        "approx_loc": 200_000},
     {"name": "dbeaver",             "approx_loc": 500_000},
+    # Extended 10
+    {"name": "retrofit",            "approx_loc":  15_000},
+    {"name": "gson",                "approx_loc":  30_000},
+    {"name": "caffeine",            "approx_loc":  20_000},
+    {"name": "resilience4j",        "approx_loc":  30_000},
+    {"name": "mybatis-3",           "approx_loc":  80_000},
+    {"name": "RxJava",              "approx_loc":  50_000},
+    {"name": "okhttp",              "approx_loc":  50_000},
+    {"name": "flyway",              "approx_loc": 100_000},
+    {"name": "micrometer",          "approx_loc":  60_000},
+    {"name": "guava",               "approx_loc": 200_000},
 ]
 
 
