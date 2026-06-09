@@ -27,6 +27,10 @@
             <groupId>com.legacy.modernizer</groupId>
             <artifactId>rag</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.legacy.modernizer</groupId>
+            <artifactId>evaluator</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
