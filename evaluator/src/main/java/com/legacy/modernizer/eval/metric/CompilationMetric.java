@@ -16,19 +16,28 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Phase 4.3 — Compilation metric.
+ * Phase 4.3/4.5 — Compilation metric.
  *
  * <p>For the <b>multi-agent</b> system: groups SERVICE_CODE artifacts by service name,
  * writes each service to a temp directory, then runs {@code mvn compile -q} for
  * each service. Score = services_compiled_ok / total_services (0.0–1.0).
  *
- * <p>For <b>baselines</b>: score = 0.0 because single-prompt systems return a
- * JSON boundary plan, not compilable source code.
+ * <p>For <b>baselines</b>: uses {@link BaselineCodeExtractor} to extract
+ * {@code ```java} blocks from the raw LLM response, writes them to a temp directory
+ * with a generated pom.xml, and runs {@code mvn compile}.
+ * Score = compilable_classes / total_extracted_classes.
+ * Returns 0.0 only when the response contained no Java code blocks at all.
  */
 @Component
 public class CompilationMetric {
 
     private static final Logger log = LoggerFactory.getLogger(CompilationMetric.class);
+
+    private final BaselineCodeExtractor baselineCodeExtractor;
+
+    public CompilationMetric(BaselineCodeExtractor baselineCodeExtractor) {
+        this.baselineCodeExtractor = baselineCodeExtractor;
+    }
 
     public record Result(
             double          score,
@@ -87,12 +96,23 @@ public class CompilationMetric {
 
     // ─── Baseline evaluation ──────────────────────────────────────────────────
 
-    /** Baselines produce no compilable code — score is always 0.0. */
-    public Result evaluateBaseline(String systemId) {
-        log.info("[compilation][{}] Baseline — no code generated, score=0.0", systemId);
-        return new Result(0.0, 0, 0, Map.of(
-                "reason", "Single-prompt baseline does not generate compilable source code",
-                "system", systemId));
+    /**
+     * Extracts {@code ```java} blocks from the raw LLM response and attempts
+     * to compile them, returning a real compilation rate instead of hardcoded 0.0.
+     *
+     * @param systemId        e.g. {@code "single-prompt-gpt4o"}
+     * @param rawResponseText full content of {@code response_raw.txt}
+     */
+    public Result evaluateBaseline(String systemId, String rawResponseText) {
+        BaselineCodeExtractor.BaselineCompilationResult r =
+                baselineCodeExtractor.extractAndCompile(rawResponseText, systemId);
+
+        int ok    = r.success() ? r.totalClasses() : Math.max(0, r.totalClasses() - r.errorCount());
+        int total = r.totalClasses();
+
+        log.info("[compilation][{}] baseline rate={} ({}/{} classes)",
+                systemId, r.compilationRate(), ok, total);
+        return new Result(r.compilationRate(), ok, total, r.metadata());
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────

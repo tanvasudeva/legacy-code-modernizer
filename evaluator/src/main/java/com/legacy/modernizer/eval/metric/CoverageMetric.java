@@ -37,6 +37,12 @@ public class CoverageMetric {
 
     private static final Logger log = LoggerFactory.getLogger(CoverageMetric.class);
 
+    private final BaselineCodeExtractor baselineCodeExtractor;
+
+    public CoverageMetric(BaselineCodeExtractor baselineCodeExtractor) {
+        this.baselineCodeExtractor = baselineCodeExtractor;
+    }
+
     // JaCoCo plugin block injected before </plugins> in each service pom
     private static final String JACOCO_PLUGIN = """
             <plugin>
@@ -96,10 +102,82 @@ public class CoverageMetric {
 
     // ─── Baseline ─────────────────────────────────────────────────────────────
 
-    public Result evaluateBaseline(String systemId) {
-        return new Result(0.0, Map.of(
-                "reason", "Single-prompt baseline generates no test code",
-                "system", systemId));
+    /**
+     * If the raw LLM response contains test classes ({@code @Test} / JUnit imports),
+     * extracts all code, writes a temp project, and attempts {@code mvn test} + JaCoCo.
+     * Most baseline responses will not include tests, in which case the real 0.0 is
+     * returned — genuine rather than assumed.
+     *
+     * @param systemId        e.g. {@code "single-prompt-gpt4o"}
+     * @param rawResponseText full content of {@code response_raw.txt}
+     */
+    public Result evaluateBaseline(String systemId, String rawResponseText) {
+        BaselineCodeExtractor.ExtractedCode extracted =
+                baselineCodeExtractor.extract(rawResponseText);
+
+        if (!extracted.hasTestClasses()) {
+            log.info("[coverage][{}] No test classes in response — score=0.0 (genuine)", systemId);
+            return new Result(0.0, Map.of(
+                    "reason", "Baseline response contains no test classes",
+                    "system", systemId,
+                    "blocksFound", extracted.totalBlocks()));
+        }
+
+        // Baseline response has test code — attempt coverage measurement
+        log.info("[coverage][{}] Test classes detected — attempting mvn test", systemId);
+        // Reuse the temp-dir write logic from extractAndCompile but run test instead
+        return runBaselineCoverage(systemId, extracted);
+    }
+
+    private Result runBaselineCoverage(String systemId,
+                                       BaselineCodeExtractor.ExtractedCode extracted) {
+        Path tempDir = null;
+        try {
+            tempDir = Files.createTempDirectory("lcm-bl-cov-" + systemId + "-");
+            String pom = BaselineCodeExtractor.generatePom();
+            // Inject JaCoCo into the generated pom
+            pom = pom.replace("</dependencies>",
+                    "</dependencies>\n    <build><plugins>" + JACOCO_PLUGIN + "</plugins></build>");
+            Files.writeString(tempDir.resolve("pom.xml"), pom);
+
+            for (int i = 0; i < extracted.blocks().size(); i++) {
+                String src  = extracted.blocks().get(i);
+                String path = baselineCodeExtractor.inferFilePath(src, i);
+                Path target = tempDir.resolve(path).normalize();
+                if (!target.startsWith(tempDir)) continue;
+                Files.createDirectories(target.getParent());
+                Files.writeString(target, src);
+            }
+
+            String mvn = System.getProperty("os.name", "").toLowerCase().contains("win")
+                    ? "mvn.cmd" : "mvn";
+            Process proc = new ProcessBuilder(mvn, "test", "-q", "--no-transfer-progress")
+                    .directory(tempDir.toFile()).redirectErrorStream(true).start();
+            proc.getInputStream().readAllBytes(); // drain
+            int exit = proc.waitFor();
+
+            if (exit != 0) return new Result(0.0, Map.of(
+                    "reason", "mvn test failed", "exitCode", exit, "system", systemId));
+
+            Path xml = tempDir.resolve("target/site/jacoco/jacoco.xml");
+            if (!Files.exists(xml)) return new Result(0.0, Map.of(
+                    "reason", "jacoco.xml not produced", "system", systemId));
+
+            double cov = parseLineCoverage(xml);
+            log.info("[coverage][{}] baseline coverage={}", systemId, cov);
+            return new Result(cov, Map.of("system", systemId, "hasTestClasses", true));
+
+        } catch (Exception e) {
+            log.warn("[coverage][{}] baseline coverage failed: {}", systemId, e.getMessage());
+            return new Result(0.0, Map.of("error", e.getMessage(), "system", systemId));
+        } finally {
+            if (tempDir != null && Files.exists(tempDir)) {
+                try (var s = Files.walk(tempDir)) {
+                    s.sorted(java.util.Comparator.reverseOrder())
+                     .map(Path::toFile).forEach(java.io.File::delete);
+                } catch (IOException ignored) {}
+            }
+        }
     }
 
     // ─── Internal ─────────────────────────────────────────────────────────────

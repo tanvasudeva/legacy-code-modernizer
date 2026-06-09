@@ -93,19 +93,20 @@ public class EvaluatorService {
 
         // 1. Compilation
         CompilationMetric.Result comp = compilationMetric.evaluate(artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.COMPILATION_SUCCESS, comp.score(), comp.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.COMPILATION_SUCCESS, comp.score(), null, comp.metadata()));
 
         // 2. Coverage
         CoverageMetric.Result cov = coverageMetric.evaluate(artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.COVERAGE, cov.score(), cov.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.COVERAGE, cov.score(), null, cov.metadata()));
 
         // 3. API completeness
         ApiCompletenessMetric.Result api = apiCompletenessMetric.evaluate(originalSrcDir, artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.API_COMPLETENESS, api.score(), api.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.API_COMPLETENESS, api.score(), null, api.metadata()));
 
-        // 4. LLM judge
-        LlmJudgeMetric.Result judge = llmJudgeMetric.evaluate(artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.LLM_JUDGE_SCORE, judge.score(), judge.metadata()));
+        // 4. LLM judge — GPT-4o judges Claude-generated multi-agent output
+        LlmJudgeMetric.Result judge = llmJudgeMetric.evaluate(artifacts, MULTI_AGENT);
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.LLM_JUDGE_SCORE,
+                judge.score(), judge.judgeModelId(), judge.metadata()));
 
         log.info("[evaluator] Multi-agent job {} — compile={} cov={} api={} judge={}",
                 jobId, comp.score(), cov.score(), api.score(), judge.score());
@@ -124,26 +125,30 @@ public class EvaluatorService {
         log.info("[evaluator] Baseline evaluation for job {} system={}", jobId, systemId);
         List<EvalMetric> saved = new ArrayList<>();
 
-        Path responseJson = resultsRoot().resolve(repoNameFor(jobId))
-                .resolve(systemId).resolve("response.json");
-        String rawResponse = readJsonSafe(responseJson);
+        Path systemDir  = resultsRoot().resolve(repoNameFor(jobId)).resolve(systemId);
+        Path responseJson = systemDir.resolve("response.json");
+        Path responseRaw  = systemDir.resolve("response_raw.txt");
 
-        // 1. Compilation — always 0
-        CompilationMetric.Result comp = compilationMetric.evaluateBaseline(systemId);
-        saved.add(persist(jobId, systemId, MetricName.COMPILATION_SUCCESS, comp.score(), comp.metadata()));
+        String rawResponse     = readJsonSafe(responseJson);       // JSON plan (for LLM judge)
+        String rawResponseText = readRawSafe(responseRaw);          // full LLM output (for extractor)
 
-        // 2. Coverage — always 0
-        CoverageMetric.Result cov = coverageMetric.evaluateBaseline(systemId);
-        saved.add(persist(jobId, systemId, MetricName.COVERAGE, cov.score(), cov.metadata()));
+        // 1. Compilation — extract & compile java blocks from raw response
+        CompilationMetric.Result comp = compilationMetric.evaluateBaseline(systemId, rawResponseText);
+        saved.add(persist(jobId, systemId, MetricName.COMPILATION_SUCCESS, comp.score(), null, comp.metadata()));
 
-        // 3. API completeness — class name overlap
+        // 2. Coverage — attempt if test classes exist in raw response
+        CoverageMetric.Result cov = coverageMetric.evaluateBaseline(systemId, rawResponseText);
+        saved.add(persist(jobId, systemId, MetricName.COVERAGE, cov.score(), null, cov.metadata()));
+
+        // 3. API completeness — method-name overlap on extracted code, fallback to class names
         ApiCompletenessMetric.Result api =
-                apiCompletenessMetric.evaluateBaseline(originalSrcDir, responseJson, systemId);
-        saved.add(persist(jobId, systemId, MetricName.API_COMPLETENESS, api.score(), api.metadata()));
+                apiCompletenessMetric.evaluateBaseline(originalSrcDir, responseJson, systemId, rawResponseText);
+        saved.add(persist(jobId, systemId, MetricName.API_COMPLETENESS, api.score(), null, api.metadata()));
 
-        // 4. LLM judge — score the decomposition plan quality
+        // 4. LLM judge — opposing model judges baseline output
         LlmJudgeMetric.Result judge = llmJudgeMetric.evaluateBaseline(rawResponse, systemId);
-        saved.add(persist(jobId, systemId, MetricName.LLM_JUDGE_SCORE, judge.score(), judge.metadata()));
+        saved.add(persist(jobId, systemId, MetricName.LLM_JUDGE_SCORE,
+                judge.score(), judge.judgeModelId(), judge.metadata()));
 
         log.info("[evaluator] Baseline {} job {} — compile={} cov={} api={} judge={}",
                 systemId, jobId, comp.score(), cov.score(), api.score(), judge.score());
@@ -159,12 +164,14 @@ public class EvaluatorService {
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private EvalMetric persist(Long jobId, String systemId, MetricName name,
-                               double value, java.util.Map<String, Object> metadata) {
+                               double value, String judgeModel,
+                               java.util.Map<String, Object> metadata) {
         EvalMetric m = EvalMetric.builder()
                 .jobId(jobId)
                 .systemId(systemId)
                 .metricName(name)
                 .metricValue(toBd(value))
+                .judgeModel(judgeModel)
                 .metadata(metadata)
                 .build();
         return evalMetricRepository.save(m);
@@ -201,6 +208,14 @@ public class EvaluatorService {
             return Files.exists(path) ? Files.readString(path) : "[]";
         } catch (java.io.IOException e) {
             return "[]";
+        }
+    }
+
+    private static String readRawSafe(Path path) {
+        try {
+            return Files.exists(path) ? Files.readString(path) : "";
+        } catch (java.io.IOException e) {
+            return "";
         }
     }
 }
