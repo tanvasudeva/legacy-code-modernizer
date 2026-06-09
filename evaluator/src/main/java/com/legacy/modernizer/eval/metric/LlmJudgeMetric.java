@@ -4,46 +4,38 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.legacy.modernizer.model.Artifact;
 import com.legacy.modernizer.model.ArtifactType;
-import dev.langchain4j.model.anthropic.AnthropicChatModel;
-import dev.langchain4j.model.chat.ChatLanguageModel;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Phase 4.3 — LLM Judge metric.
+ * Phase 4.3/4.6 — LLM Judge metric.
  *
- * <p>Uses Claude claude-sonnet-4-6 to score generated code (or a baseline's service
- * boundary plan) on five dimensions, each 1–10:
- * <ol>
- *   <li><b>correctness</b> — implements standard patterns and logic correctly</li>
- *   <li><b>readability</b> — clear naming, structure, no magic numbers</li>
- *   <li><b>idiomaticity</b> — Spring Boot 3 / Java 21 best practices</li>
- *   <li><b>completeness</b> — all expected components present</li>
- *   <li><b>dry</b> — code duplication minimised</li>
- * </ol>
- * <p>The final score is the arithmetic mean of the five sub-scores, on a 1–10 scale.
+ * <p>Delegates all LLM calls to {@link CrossModelJudge}, which routes each
+ * evaluation to the <em>opposing</em> model family:
+ * <ul>
+ *   <li>Multi-agent output (Claude-generated) → judged by GPT-4o</li>
+ *   <li>GPT-4o baseline output → judged by Claude</li>
+ *   <li>Claude baseline output → judged by GPT-4o</li>
+ * </ul>
  *
- * <p>Requires {@code ANTHROPIC_API_KEY}.  Returns 0.0 with an error message
- * if the key is absent or the LLM call fails.
+ * <p>The judge scores five dimensions (1–10 each) and returns their arithmetic mean.
+ * The {@link Result} exposes {@link Result#judgeModelId()} so the caller can persist
+ * which model performed the evaluation, enabling independent verification.
  */
 @Component
 public class LlmJudgeMetric {
 
     private static final Logger log = LoggerFactory.getLogger(LlmJudgeMetric.class);
 
-    private static final String MODEL_ID        = "claude-sonnet-4-6";
-    private static final int    MAX_CODE_CHARS  = 12_000;   // truncate large services
-    private static final int    MAX_OUTPUT_TOKENS = 512;
+    static final int MAX_CODE_CHARS = 12_000;
 
-    private static final String CODE_SYSTEM_PROMPT = """
+    public static final String CODE_SYSTEM_PROMPT = """
             You are a senior Java code quality assessor. Evaluate the Spring Boot 3 \
             service code provided on exactly 5 dimensions. Score each 1 (very poor) to 10 (excellent).
 
@@ -59,7 +51,7 @@ public class LlmJudgeMetric {
             {"correctness":N,"readability":N,"idiomaticity":N,"completeness":N,"dry":N}
             """;
 
-    private static final String PLAN_SYSTEM_PROMPT = """
+    static final String PLAN_SYSTEM_PROMPT = """
             You are a senior software architect evaluating a microservice decomposition plan \
             for a Java monolith. Score the plan on exactly 5 dimensions, each 1–10.
 
@@ -75,31 +67,23 @@ public class LlmJudgeMetric {
             {"correctness":N,"readability":N,"idiomaticity":N,"completeness":N,"dry":N}
             """;
 
-    private final ObjectMapper om = new ObjectMapper();
-    private ChatLanguageModel  judgeModel;
-    private boolean            available;
+    private final CrossModelJudge crossModelJudge;
 
-    @PostConstruct
-    void init() {
-        String apiKey = System.getenv("ANTHROPIC_API_KEY");
-        if (apiKey == null || apiKey.isBlank()) {
-            log.warn("[llm-judge] ANTHROPIC_API_KEY not set — metric will return 0.0");
-            available = false;
-            return;
-        }
-        judgeModel = AnthropicChatModel.builder()
-                .apiKey(apiKey)
-                .modelName(MODEL_ID)
-                .maxTokens(MAX_OUTPUT_TOKENS)
-                .temperature(0.0)
-                .timeout(Duration.ofSeconds(120))
-                .build();
-        available = true;
-        log.info("[llm-judge] Initialised — model={}", MODEL_ID);
+    public LlmJudgeMetric(CrossModelJudge crossModelJudge) {
+        this.crossModelJudge = crossModelJudge;
     }
 
+    /**
+     * Result of one judge evaluation.
+     *
+     * @param score        arithmetic mean of 5 sub-scores (1–10 scale)
+     * @param judgeModelId the model that performed the evaluation (e.g. {@code "gpt-4o"})
+     * @param subScores    individual dimension scores
+     * @param metadata     raw response and any error details
+     */
     public record Result(
-            double              score,          // mean of 5 sub-scores (1–10 scale)
+            double              score,
+            String              judgeModelId,
             Map<String, Object> subScores,
             Map<String, Object> metadata
     ) {}
@@ -108,10 +92,13 @@ public class LlmJudgeMetric {
 
     /**
      * Judges the quality of generated SERVICE_CODE artifacts.
-     * Concatenates all service code up to {@link #MAX_CODE_CHARS} then calls Claude.
+     * Routes to GPT-4o judge (Claude generated this output).
+     *
+     * @param artifacts  all artifacts for the job
+     * @param systemId   must be {@code "multi-agent"}
      */
-    public Result evaluate(List<Artifact> artifacts) {
-        if (!available) return unavailable();
+    public Result evaluate(List<Artifact> artifacts, String systemId) {
+        if (!crossModelJudge.isAvailable()) return unavailable(systemId);
 
         String codeSample = artifacts.stream()
                 .filter(a -> a.getArtifactType() == ArtifactType.SERVICE_CODE)
@@ -120,55 +107,47 @@ public class LlmJudgeMetric {
                 .collect(Collectors.joining("\n\n// ─────────────────\n\n"));
 
         if (codeSample.isBlank()) {
-            return new Result(0.0, Map.of(), Map.of("reason", "no SERVICE_CODE content"));
+            return new Result(0.0, crossModelJudge.resolveJudgeModelId(systemId),
+                    Map.of(), Map.of("reason", "no SERVICE_CODE content"));
         }
         if (codeSample.length() > MAX_CODE_CHARS) {
             codeSample = codeSample.substring(0, MAX_CODE_CHARS) + "\n// ... (truncated)";
         }
 
-        return callJudge(CODE_SYSTEM_PROMPT, codeSample, "multi-agent");
+        CrossModelJudge.JudgeResult r = crossModelJudge.judge(systemId, codeSample, CODE_SYSTEM_PROMPT);
+        return toResult(r);
     }
 
     // ─── Baseline ─────────────────────────────────────────────────────────────
 
-    /** Judges the quality of a baseline's service boundary plan JSON. */
-    public Result evaluateBaseline(String rawPlanJson, String systemId) {
-        if (!available) return unavailable();
-        if (rawPlanJson == null || rawPlanJson.isBlank()) {
-            return new Result(0.0, Map.of(), Map.of("reason", "empty baseline response"));
+    /**
+     * Judges the quality of a baseline's service boundary plan or extracted code.
+     * Routes to the appropriate opposing model.
+     *
+     * @param content  raw response text (JSON plan or extracted code)
+     * @param systemId {@code "single-prompt-claude"} or {@code "single-prompt-gpt4o"}
+     */
+    public Result evaluateBaseline(String content, String systemId) {
+        if (!crossModelJudge.isAvailable()) return unavailable(systemId);
+        if (content == null || content.isBlank()) {
+            return new Result(0.0, crossModelJudge.resolveJudgeModelId(systemId),
+                    Map.of(), Map.of("reason", "empty baseline response"));
         }
 
-        String content = rawPlanJson.length() > MAX_CODE_CHARS
-                ? rawPlanJson.substring(0, MAX_CODE_CHARS) + "... (truncated)"
-                : rawPlanJson;
+        String truncated = content.length() > MAX_CODE_CHARS
+                ? content.substring(0, MAX_CODE_CHARS) + "... (truncated)"
+                : content;
 
-        return callJudge(PLAN_SYSTEM_PROMPT, content, systemId);
+        CrossModelJudge.JudgeResult r = crossModelJudge.judge(systemId, truncated, PLAN_SYSTEM_PROMPT);
+        return toResult(r);
     }
 
-    // ─── Internal ─────────────────────────────────────────────────────────────
+    // ─── Static parsing helpers (testable without model instantiation) ─────────
 
-    private Result callJudge(String systemPrompt, String content, String tag) {
+    /** Parses a JSON sub-score response from the judge model. */
+    public static Map<String, Object> parseSubScoresStatic(String raw) {
         try {
-            String raw = judgeModel.generate(
-                    List.of(
-                            dev.langchain4j.data.message.SystemMessage.from(systemPrompt),
-                            dev.langchain4j.data.message.UserMessage.from(content)
-                    )).content().text();
-
-            Map<String, Object> subScores = parseSubScores(raw);
-            double avg = computeAverage(subScores);
-
-            log.info("[llm-judge][{}] score={} sub={}", tag, avg, subScores);
-            return new Result(avg, subScores, Map.of("rawResponse", raw));
-
-        } catch (Exception e) {
-            log.error("[llm-judge][{}] Call failed: {}", tag, e.getMessage(), e);
-            return new Result(0.0, Map.of(), Map.of("error", e.getMessage()));
-        }
-    }
-
-    public Map<String, Object> parseSubScores(String raw) {
-        try {
+            ObjectMapper om = new ObjectMapper();
             String json = raw.replaceAll("(?s)```[a-zA-Z]*\\s*", "").replaceAll("```", "").strip();
             int start = json.indexOf('{'), end = json.lastIndexOf('}');
             if (start < 0 || end <= start) return Map.of();
@@ -182,6 +161,14 @@ public class LlmJudgeMetric {
         }
     }
 
+    /**
+     * Instance-level wrapper for backward compatibility with tests
+     * that instantiate {@link LlmJudgeMetric} to call parse helpers.
+     */
+    public Map<String, Object> parseSubScores(String raw) {
+        return parseSubScoresStatic(raw);
+    }
+
     public static double computeAverage(Map<String, Object> subScores) {
         if (subScores.isEmpty()) return 0.0;
         double sum = 0;
@@ -191,7 +178,15 @@ public class LlmJudgeMetric {
         return sum / subScores.size();
     }
 
-    private static Result unavailable() {
-        return new Result(0.0, Map.of(), Map.of("reason", "ANTHROPIC_API_KEY not set"));
+    // ─── Internal ─────────────────────────────────────────────────────────────
+
+    private static Result toResult(CrossModelJudge.JudgeResult r) {
+        return new Result(r.score(), r.judgeModelId(), r.subScores(), r.metadata());
+    }
+
+    private Result unavailable(String systemId) {
+        String judgeId = crossModelJudge.resolveJudgeModelId(systemId);
+        return new Result(0.0, judgeId, Map.of(),
+                Map.of("reason", "no judge model available", "judgeModel", judgeId));
     }
 }

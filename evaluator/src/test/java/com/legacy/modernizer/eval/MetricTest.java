@@ -226,8 +226,8 @@ class MetricTest {
 
     @Test
     void parseSubScoresValidJson() {
-        LlmJudgeMetric m = new LlmJudgeMetric();
-        Map<String, Object> scores = m.parseSubScores(
+        // parseSubScoresStatic is a static helper — no model needed
+        Map<String, Object> scores = LlmJudgeMetric.parseSubScoresStatic(
                 "{\"correctness\":8,\"readability\":7,\"idiomaticity\":9,\"completeness\":8,\"dry\":7}");
         assertThat(scores).containsEntry("correctness", 8.0)
                           .containsEntry("dry", 7.0);
@@ -235,16 +235,14 @@ class MetricTest {
 
     @Test
     void parseSubScoresStripsCodeFence() {
-        LlmJudgeMetric m = new LlmJudgeMetric();
-        Map<String, Object> scores = m.parseSubScores(
+        Map<String, Object> scores = LlmJudgeMetric.parseSubScoresStatic(
                 "```json\n{\"correctness\":6,\"readability\":6,\"idiomaticity\":6,\"completeness\":6,\"dry\":6}\n```");
         assertThat(scores).hasSize(5);
     }
 
     @Test
     void parseSubScoresInvalidJsonReturnsEmpty() {
-        LlmJudgeMetric m = new LlmJudgeMetric();
-        assertThat(m.parseSubScores("not json at all")).isEmpty();
+        assertThat(LlmJudgeMetric.parseSubScoresStatic("not json at all")).isEmpty();
     }
 
     @Test
