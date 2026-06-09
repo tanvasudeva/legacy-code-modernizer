@@ -85,30 +85,60 @@ public class ApiCompletenessMetric {
     // ─── Baseline ─────────────────────────────────────────────────────────────
 
     /**
-     * Checks what fraction of original class names are claimed by the baseline's
-     * service boundary plan.
+     * Computes API completeness for a baseline response.
+     *
+     * <p>If the raw response contains {@code ```java} blocks, JavaParser extracts
+     * their public method names and compares against the original source — the same
+     * method-level comparison used for the multi-agent system.
+     *
+     * <p>Fallback (when no code blocks are present): class simple-name overlap
+     * from the {@code classFqns} in {@code response.json}.
      *
      * @param originalSrcDir   root of the benchmark repo src directory
-     * @param responseJsonPath path to {@code response.json} from the baseline run
+     * @param responseJsonPath path to {@code response.json}
      * @param systemId         e.g. {@code "single-prompt-gpt4o"}
+     * @param rawResponseText  full content of {@code response_raw.txt}
      */
-    public Result evaluateBaseline(Path originalSrcDir, Path responseJsonPath, String systemId) {
+    public Result evaluateBaseline(Path originalSrcDir, Path responseJsonPath,
+                                   String systemId, String rawResponseText) {
+        Set<String> originalMethods = extractPublicMethodNames(originalSrcDir);
+
+        // Try code-block path first (same quality as multi-agent measurement)
+        Set<String> extractedMethods = extractMethodsFromRawResponse(rawResponseText);
+        if (!extractedMethods.isEmpty()) {
+            log.info("[api-completeness][{}] code-block path: original={} extracted={}",
+                    systemId, originalMethods.size(), extractedMethods.size());
+
+            if (originalMethods.isEmpty()) {
+                return new Result(0.0, 0, 0, Map.of("reason", "no original source found"));
+            }
+            Set<String> intersection = new HashSet<>(extractedMethods);
+            intersection.retainAll(originalMethods);
+            double score = (double) intersection.size() / originalMethods.size();
+            return new Result(score, originalMethods.size(), intersection.size(), Map.of(
+                    "mode",                  "code-block-method-overlap",
+                    "originalMethodCount",   originalMethods.size(),
+                    "extractedMethodCount",  extractedMethods.size(),
+                    "preservedCount",        intersection.size()
+            ));
+        }
+
+        // Fallback: class-name overlap from JSON plan
         Set<String> originalClassNames = extractClassSimpleNames(originalSrcDir);
         Set<String> claimedFqns        = parseClaimedFqns(responseJsonPath);
         Set<String> claimedSimple      = toSimpleNames(claimedFqns);
 
-        log.info("[api-completeness][{}] original classes={}, claimed={}",
+        log.info("[api-completeness][{}] class-name fallback: original={}, claimed={}",
                 systemId, originalClassNames.size(), claimedSimple.size());
 
         if (originalClassNames.isEmpty()) {
             return new Result(0.0, 0, 0, Map.of("reason", "no original source found"));
         }
-
         Set<String> intersection = new HashSet<>(claimedSimple);
         intersection.retainAll(originalClassNames);
-
         double score = (double) intersection.size() / originalClassNames.size();
         return new Result(score, originalClassNames.size(), intersection.size(), Map.of(
+                "mode",               "class-name-fallback",
                 "originalClassCount", originalClassNames.size(),
                 "claimedClassCount",  claimedSimple.size(),
                 "matchedClassCount",  intersection.size()
@@ -187,6 +217,28 @@ public class ApiCompletenessMetric {
             log.warn("[api-completeness] Cannot parse {}: {}", responseJsonPath, e.getMessage());
         }
         return fqns;
+    }
+
+    /**
+     * Extracts public method names from all {@code ```java} blocks in a raw response.
+     * Returns an empty set when no code blocks are present (triggers the fallback path).
+     */
+    public Set<String> extractMethodsFromRawResponse(String rawResponseText) {
+        Set<String> names = new HashSet<>();
+        if (rawResponseText == null || rawResponseText.isBlank()) return names;
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "```java\\s*\\n(.*?)```", java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher m = p.matcher(rawResponseText);
+        while (m.find()) {
+            String src = m.group(1).strip();
+            if (src.isBlank()) continue;
+            try {
+                com.github.javaparser.ast.CompilationUnit cu =
+                        com.github.javaparser.StaticJavaParser.parse(src);
+                new PublicMethodVisitor().visit(cu, names);
+            } catch (com.github.javaparser.ParseProblemException ignored) {}
+        }
+        return names;
     }
 
     public static Set<String> toSimpleNames(Set<String> fqns) {
