@@ -1,0 +1,144 @@
+Based on my analysis of the Spring PetClinic monolith, I recommend decomposing it into the following microservices following Domain-Driven Design principles:
+
+[
+  {
+    "serviceName": "owner-service",
+    "classFqns": [
+      "org.springframework.samples.petclinic.owner.Owner",
+      "org.springframework.samples.petclinic.owner.OwnerController",
+      "org.springframework.samples.petclinic.owner.OwnerRepository"
+    ],
+    "description": "Manages owner registration, lookup, and profile management within the owner bounded context.",
+    "rationale": "The Owner entity, its controller, and repository form a cohesive CRUD bounded context with no cross-domain dependencies."
+  },
+  {
+    "serviceName": "pet-service",
+    "classFqns": [
+      "org.springframework.samples.petclinic.owner.Pet",
+      "org.springframework.samples.petclinic.owner.PetType",
+      "org.springframework.samples.petclinic.owner.PetController"
+    ],
+    "description": "Manages pet registration and medical history within the pet bounded context.",
+    "rationale": "Pet and PetType are tightly coupled to each other but loosely coupled to the vet and visit domains."
+  },
+  {
+    "serviceName": "vet-service",
+    "classFqns": [
+      "org.springframework.samples.petclinic.vet.Vet",
+      "org.springframework.samples.petclinic.vet.VetRepository",
+      "org.springframework.samples.petclinic.vet.VetsController"
+    ],
+    "description": "Manages veterinarian profiles and specialties.",
+    "rationale": "Vets have no write dependencies on other domains and can be independently deployed."
+  }
+]
+
+Here is a sample implementation for the owner-service microservice:
+
+```java
+package com.modernized.ownerservice.entity;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "owners")
+public class Owner {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String firstName;
+    private String lastName;
+    private String address;
+    private String city;
+    private String telephone;
+}
+```
+
+```java
+package com.modernized.ownerservice.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class OwnerRequest {
+    private String firstName;
+    private String lastName;
+    private String address;
+    private String city;
+    private String telephone;
+}
+```
+
+```java
+package com.modernized.ownerservice.repository;
+
+import com.modernized.ownerservice.entity.Owner;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface OwnerRepository extends JpaRepository<Owner, Long> {}
+```
+
+```java
+package com.modernized.ownerservice.service;
+
+import com.modernized.ownerservice.dto.OwnerRequest;
+import com.modernized.ownerservice.entity.Owner;
+import com.modernized.ownerservice.repository.OwnerRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+@Service
+@Transactional
+public class OwnerService {
+
+    private final OwnerRepository repo;
+
+    public OwnerService(OwnerRepository repo) {
+        this.repo = repo;
+    }
+
+    public List<Owner> findAll() {
+        return repo.findAll();
+    }
+
+    public Owner findById(Long id) {
+        return repo.findById(id).orElseThrow();
+    }
+
+    public Owner create(OwnerRequest req) {
+        return repo.save(Owner.builder()
+                .firstName(req.getFirstName())
+                .lastName(req.getLastName())
+                .address(req.getAddress())
+                .city(req.getCity())
+                .telephone(req.getTelephone())
+                .build());
+    }
+
+    public void delete(Long id) {
+        repo.deleteById(id);
+    }
+}
+```
+
+These services can be deployed independently using Docker. Each service should have its own PostgreSQL schema and communicate via REST APIs for cross-service data needs.
