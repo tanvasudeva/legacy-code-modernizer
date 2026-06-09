@@ -42,10 +42,14 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Claude LLM judge (Phase 4.3) -->
+        <!-- LLM judge models (Phase 4.3/4.6 cross-model evaluation) -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-anthropic</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
         </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>
