@@ -1,6 +1,7 @@
 package com.legacy.modernizer.eval;
 
 import com.legacy.modernizer.eval.metric.ApiCompletenessMetric;
+import com.legacy.modernizer.eval.metric.BaselineCodeExtractor;
 import com.legacy.modernizer.eval.metric.CompilationMetric;
 import com.legacy.modernizer.eval.metric.CoverageMetric;
 import com.legacy.modernizer.eval.metric.LlmJudgeMetric;
@@ -18,40 +19,45 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit tests for all four Phase 4.3 metric classes.
+ * Unit tests for all four Phase 4.3/4.5 metric classes.
  * No Spring context, no database, no LLM calls.
  */
 class MetricTest {
+
+    // shared extractor instance (no Spring needed)
+    private final BaselineCodeExtractor extractor = new BaselineCodeExtractor();
 
     // ─────────────────────────────────────────────────────────────────────────
     // CompilationMetric
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    void compilationBaselineAlwaysZero() {
-        CompilationMetric m = new CompilationMetric();
-        CompilationMetric.Result r = m.evaluateBaseline("single-prompt-gpt4o");
+    void compilationBaselineWithNoCodeBlocksReturnsZero() {
+        CompilationMetric m = new CompilationMetric(extractor);
+        // Response that has no ```java blocks → no code to compile → 0.0
+        CompilationMetric.Result r = m.evaluateBaseline(
+                "single-prompt-gpt4o",
+                "Here is my decomposition plan: [{}]. No code provided.");
         assertThat(r.score()).isEqualTo(0.0);
         assertThat(r.servicesTotal()).isEqualTo(0);
     }
 
     @Test
     void compilationNoArtifactsReturnsZero() {
-        CompilationMetric m = new CompilationMetric();
+        CompilationMetric m = new CompilationMetric(extractor);
         CompilationMetric.Result r = m.evaluate(List.of());
         assertThat(r.score()).isEqualTo(0.0);
     }
 
     @Test
     void compilationArtifactsWithNullPathSkipped() {
-        CompilationMetric m = new CompilationMetric();
+        CompilationMetric m = new CompilationMetric(extractor);
         Artifact a = Artifact.builder()
                 .artifactType(ArtifactType.SERVICE_CODE)
                 .classFqn("owner-service")
                 .filePath(null)
                 .content("class X{}")
                 .build();
-        // Should not throw; artifact is filtered because filePath is null
         CompilationMetric.Result r = m.evaluate(List.of(a));
         assertThat(r.score()).isEqualTo(0.0);
     }
@@ -61,10 +67,13 @@ class MetricTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    void coverageBaselineAlwaysZero() {
-        CoverageMetric m = new CoverageMetric();
-        CoverageMetric.Result r = m.evaluateBaseline("single-prompt-claude");
+    void coverageBaselineWithNoTestsReturnsGenuineZero() {
+        CoverageMetric m = new CoverageMetric(extractor);
+        // No @Test or JUnit in response → genuine 0.0 (not a fake)
+        CoverageMetric.Result r = m.evaluateBaseline(
+                "single-prompt-claude", "Plain text, no java blocks.");
         assertThat(r.score()).isEqualTo(0.0);
+        assertThat(r.metadata()).containsKey("reason");
     }
 
     @Test
@@ -162,8 +171,8 @@ class MetricTest {
     }
 
     @Test
-    void apiCompletenessBaselineParsesClassFqns(@TempDir Path src,
-                                                @TempDir Path resultsDir) throws IOException {
+    void apiCompletenessBaselineFallbackToClassNames(@TempDir Path src,
+                                                      @TempDir Path resultsDir) throws IOException {
         Files.writeString(src.resolve("Owner.java"), "class Owner {}");
         Files.writeString(src.resolve("Pet.java"),   "class Pet {}");
 
@@ -173,10 +182,35 @@ class MetricTest {
                 """);
 
         ApiCompletenessMetric m = new ApiCompletenessMetric();
-        var result = m.evaluateBaseline(src, responseJson, "single-prompt-gpt4o");
+        // rawResponseText has no ```java blocks → triggers class-name fallback
+        var result = m.evaluateBaseline(src, responseJson, "single-prompt-gpt4o",
+                "Plain text response with no code blocks.");
 
-        // Owner matched, Pet not matched → 1/2 = 0.5
+        // class-name fallback: Owner matched, Pet not matched → 1/2 = 0.5
         assertThat(result.score()).isEqualTo(0.5);
+        assertThat(result.metadata()).containsEntry("mode", "class-name-fallback");
+    }
+
+    @Test
+    void apiCompletenessBaselineUsesCodeBlocksWhenPresent(@TempDir Path src) throws IOException {
+        // Original has public method "doWork"
+        Files.writeString(src.resolve("SomeService.java"),
+                "public class SomeService { public void doWork() {} }");
+
+        ApiCompletenessMetric m = new ApiCompletenessMetric();
+        // Response contains a java block that also has "doWork" → method-level match
+        String rawWithCode = """
+                ```java
+                package com.example;
+                public class SomeService {
+                    public void doWork() {}
+                }
+                ```
+                """;
+        var result = m.evaluateBaseline(src, null, "single-prompt-gpt4o", rawWithCode);
+
+        assertThat(result.score()).isEqualTo(1.0);
+        assertThat(result.metadata()).containsEntry("mode", "code-block-method-overlap");
     }
 
     @Test

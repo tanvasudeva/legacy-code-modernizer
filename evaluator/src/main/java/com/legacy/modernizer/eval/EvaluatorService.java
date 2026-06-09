@@ -124,21 +124,24 @@ public class EvaluatorService {
         log.info("[evaluator] Baseline evaluation for job {} system={}", jobId, systemId);
         List<EvalMetric> saved = new ArrayList<>();
 
-        Path responseJson = resultsRoot().resolve(repoNameFor(jobId))
-                .resolve(systemId).resolve("response.json");
-        String rawResponse = readJsonSafe(responseJson);
+        Path systemDir  = resultsRoot().resolve(repoNameFor(jobId)).resolve(systemId);
+        Path responseJson = systemDir.resolve("response.json");
+        Path responseRaw  = systemDir.resolve("response_raw.txt");
 
-        // 1. Compilation — always 0
-        CompilationMetric.Result comp = compilationMetric.evaluateBaseline(systemId);
+        String rawResponse     = readJsonSafe(responseJson);       // JSON plan (for LLM judge)
+        String rawResponseText = readRawSafe(responseRaw);          // full LLM output (for extractor)
+
+        // 1. Compilation — extract & compile java blocks from raw response
+        CompilationMetric.Result comp = compilationMetric.evaluateBaseline(systemId, rawResponseText);
         saved.add(persist(jobId, systemId, MetricName.COMPILATION_SUCCESS, comp.score(), comp.metadata()));
 
-        // 2. Coverage — always 0
-        CoverageMetric.Result cov = coverageMetric.evaluateBaseline(systemId);
+        // 2. Coverage — attempt if test classes exist in raw response
+        CoverageMetric.Result cov = coverageMetric.evaluateBaseline(systemId, rawResponseText);
         saved.add(persist(jobId, systemId, MetricName.COVERAGE, cov.score(), cov.metadata()));
 
-        // 3. API completeness — class name overlap
+        // 3. API completeness — method-name overlap on extracted code, fallback to class names
         ApiCompletenessMetric.Result api =
-                apiCompletenessMetric.evaluateBaseline(originalSrcDir, responseJson, systemId);
+                apiCompletenessMetric.evaluateBaseline(originalSrcDir, responseJson, systemId, rawResponseText);
         saved.add(persist(jobId, systemId, MetricName.API_COMPLETENESS, api.score(), api.metadata()));
 
         // 4. LLM judge — score the decomposition plan quality
@@ -201,6 +204,14 @@ public class EvaluatorService {
             return Files.exists(path) ? Files.readString(path) : "[]";
         } catch (java.io.IOException e) {
             return "[]";
+        }
+    }
+
+    private static String readRawSafe(Path path) {
+        try {
+            return Files.exists(path) ? Files.readString(path) : "";
+        } catch (java.io.IOException e) {
+            return "";
         }
     }
 }
