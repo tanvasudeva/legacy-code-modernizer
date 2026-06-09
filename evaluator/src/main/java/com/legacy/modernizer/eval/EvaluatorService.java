@@ -93,19 +93,20 @@ public class EvaluatorService {
 
         // 1. Compilation
         CompilationMetric.Result comp = compilationMetric.evaluate(artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.COMPILATION_SUCCESS, comp.score(), comp.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.COMPILATION_SUCCESS, comp.score(), null, comp.metadata()));
 
         // 2. Coverage
         CoverageMetric.Result cov = coverageMetric.evaluate(artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.COVERAGE, cov.score(), cov.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.COVERAGE, cov.score(), null, cov.metadata()));
 
         // 3. API completeness
         ApiCompletenessMetric.Result api = apiCompletenessMetric.evaluate(originalSrcDir, artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.API_COMPLETENESS, api.score(), api.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.API_COMPLETENESS, api.score(), null, api.metadata()));
 
-        // 4. LLM judge
-        LlmJudgeMetric.Result judge = llmJudgeMetric.evaluate(artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.LLM_JUDGE_SCORE, judge.score(), judge.metadata()));
+        // 4. LLM judge — GPT-4o judges Claude-generated multi-agent output
+        LlmJudgeMetric.Result judge = llmJudgeMetric.evaluate(artifacts, MULTI_AGENT);
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.LLM_JUDGE_SCORE,
+                judge.score(), judge.judgeModelId(), judge.metadata()));
 
         log.info("[evaluator] Multi-agent job {} — compile={} cov={} api={} judge={}",
                 jobId, comp.score(), cov.score(), api.score(), judge.score());
@@ -133,20 +134,21 @@ public class EvaluatorService {
 
         // 1. Compilation — extract & compile java blocks from raw response
         CompilationMetric.Result comp = compilationMetric.evaluateBaseline(systemId, rawResponseText);
-        saved.add(persist(jobId, systemId, MetricName.COMPILATION_SUCCESS, comp.score(), comp.metadata()));
+        saved.add(persist(jobId, systemId, MetricName.COMPILATION_SUCCESS, comp.score(), null, comp.metadata()));
 
         // 2. Coverage — attempt if test classes exist in raw response
         CoverageMetric.Result cov = coverageMetric.evaluateBaseline(systemId, rawResponseText);
-        saved.add(persist(jobId, systemId, MetricName.COVERAGE, cov.score(), cov.metadata()));
+        saved.add(persist(jobId, systemId, MetricName.COVERAGE, cov.score(), null, cov.metadata()));
 
         // 3. API completeness — method-name overlap on extracted code, fallback to class names
         ApiCompletenessMetric.Result api =
                 apiCompletenessMetric.evaluateBaseline(originalSrcDir, responseJson, systemId, rawResponseText);
-        saved.add(persist(jobId, systemId, MetricName.API_COMPLETENESS, api.score(), api.metadata()));
+        saved.add(persist(jobId, systemId, MetricName.API_COMPLETENESS, api.score(), null, api.metadata()));
 
-        // 4. LLM judge — score the decomposition plan quality
+        // 4. LLM judge — opposing model judges baseline output
         LlmJudgeMetric.Result judge = llmJudgeMetric.evaluateBaseline(rawResponse, systemId);
-        saved.add(persist(jobId, systemId, MetricName.LLM_JUDGE_SCORE, judge.score(), judge.metadata()));
+        saved.add(persist(jobId, systemId, MetricName.LLM_JUDGE_SCORE,
+                judge.score(), judge.judgeModelId(), judge.metadata()));
 
         log.info("[evaluator] Baseline {} job {} — compile={} cov={} api={} judge={}",
                 systemId, jobId, comp.score(), cov.score(), api.score(), judge.score());
@@ -162,12 +164,14 @@ public class EvaluatorService {
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private EvalMetric persist(Long jobId, String systemId, MetricName name,
-                               double value, java.util.Map<String, Object> metadata) {
+                               double value, String judgeModel,
+                               java.util.Map<String, Object> metadata) {
         EvalMetric m = EvalMetric.builder()
                 .jobId(jobId)
                 .systemId(systemId)
                 .metricName(name)
                 .metricValue(toBd(value))
+                .judgeModel(judgeModel)
                 .metadata(metadata)
                 .build();
         return evalMetricRepository.save(m);

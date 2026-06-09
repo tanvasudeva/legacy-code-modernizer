@@ -55,6 +55,16 @@ public class EvalMetric {
     @Column(name = "baseline", precision = 10, scale = 4)
     private BigDecimal baseline;
 
+    /**
+     * Which model acted as judge for {@code LLM_JUDGE_SCORE} rows.
+     * Null for non-judge metrics.  Values: {@code "gpt-4o"}, {@code "claude-sonnet-4-6"}.
+     *
+     * <p>Routing: multi-agent output → GPT-4o judge; GPT-4o baseline → Claude judge;
+     * Claude baseline → GPT-4o judge.  This prevents a model scoring its own output.
+     */
+    @Column(name = "judge_model")
+    private String judgeModel;
+
     /** Detailed breakdown stored as JSONB (sub-scores, error counts, etc.). */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
