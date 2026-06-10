@@ -21,6 +21,8 @@ import com.legacy.modernizer.repository.MigrationJobRepository;
 import com.legacy.modernizer.repository.ServiceBoundaryRepository;
 import com.legacy.modernizer.service.AnalysisService;
 import com.legacy.modernizer.dto.AnalysisResult;
+import com.legacy.modernizer.sharedlib.SharedLibraryDetector;
+import com.legacy.modernizer.sharedlib.SharedLibraryPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -65,22 +67,24 @@ public class BenchmarkRunner {
     private static final Logger log = LoggerFactory.getLogger(BenchmarkRunner.class);
     private static final int RAG_TOP_K = 5;
 
-    private final AnalysisService          analysisService;
-    private final ArchitectAgent           architectAgent;
-    private final ServiceGeneratorAgent    serviceGeneratorAgent;
-    private final TestWriterAgent          testWriterAgent;
-    private final DocGenAgent              docGenAgent;
-    private final BundleAssembler          bundleAssembler;
-    private final RagRetriever             ragRetriever;
-    private final ArtifactRepository       artifactRepository;
+    private final AnalysisService           analysisService;
+    private final ArchitectAgent            architectAgent;
+    private final SharedLibraryDetector     sharedLibraryDetector;
+    private final ServiceGeneratorAgent     serviceGeneratorAgent;
+    private final TestWriterAgent           testWriterAgent;
+    private final DocGenAgent               docGenAgent;
+    private final BundleAssembler           bundleAssembler;
+    private final RagRetriever              ragRetriever;
+    private final ArtifactRepository        artifactRepository;
     private final ServiceBoundaryRepository boundaryRepository;
-    private final MigrationJobRepository   jobRepository;
+    private final MigrationJobRepository    jobRepository;
 
     @Value("${benchmark.results.dir:results}")
     private String resultsDirProp;
 
     public BenchmarkRunner(AnalysisService analysisService,
                            ArchitectAgent architectAgent,
+                           SharedLibraryDetector sharedLibraryDetector,
                            ServiceGeneratorAgent serviceGeneratorAgent,
                            TestWriterAgent testWriterAgent,
                            DocGenAgent docGenAgent,
@@ -91,6 +95,7 @@ public class BenchmarkRunner {
                            MigrationJobRepository jobRepository) {
         this.analysisService       = analysisService;
         this.architectAgent        = architectAgent;
+        this.sharedLibraryDetector = sharedLibraryDetector;
         this.serviceGeneratorAgent = serviceGeneratorAgent;
         this.testWriterAgent       = testWriterAgent;
         this.docGenAgent           = docGenAgent;
@@ -142,8 +147,28 @@ public class BenchmarkRunner {
 
             // Step 2: DDD boundaries
             log.info("[benchmark][{}] Step 2/5 — architect agent", repoName);
-            List<ServiceBoundary> boundaries = architectAgent.analyze(jobId, clusterMap);
-            log.info("[benchmark][{}] {} service boundaries", repoName, boundaries.size());
+            architectAgent.analyze(jobId, clusterMap);
+
+            // Step 2b: DD2 — shared library detection (runs after ArchitectAgent, before generation)
+            log.info("[benchmark][{}] Step 2b/5 — shared library detection", repoName);
+            SharedLibraryPlan sharedPlan = sharedLibraryDetector.detect(jobId, repoName);
+            if (sharedPlan.totalSharedClasses() > 0) {
+                log.info("[benchmark][{}] {} shared classes → commons module '{}'",
+                        repoName, sharedPlan.totalSharedClasses(), sharedPlan.commonsModuleName());
+            }
+
+            // Re-fetch boundaries (includes the new commons boundary if one was created)
+            List<ServiceBoundary> boundaries = boundaryRepository.findByJobId(jobId)
+                    .stream()
+                    .sorted((a, b) -> {
+                        // Generate commons first so other services can compile against it
+                        boolean aCommons = a.getServiceName().endsWith("-commons");
+                        boolean bCommons = b.getServiceName().endsWith("-commons");
+                        if (aCommons == bCommons) return 0;
+                        return aCommons ? -1 : 1;
+                    })
+                    .toList();
+            log.info("[benchmark][{}] {} service boundaries (incl. commons)", repoName, boundaries.size());
 
             // Step 3: Generate per-boundary
             int totalFiles  = 0;
