@@ -9,9 +9,12 @@ import com.legacy.modernizer.eval.model.MetricName;
 import com.legacy.modernizer.eval.repository.EvalMetricRepository;
 import com.legacy.modernizer.model.AgentTask;
 import com.legacy.modernizer.model.Artifact;
+import com.legacy.modernizer.model.ServiceBoundary;
 import com.legacy.modernizer.repository.AgentTaskRepository;
 import com.legacy.modernizer.repository.ArtifactRepository;
 import com.legacy.modernizer.repository.MigrationJobRepository;
+import com.legacy.modernizer.repository.ServiceBoundaryRepository;
+import com.legacy.modernizer.sharedlib.SharedClassRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,14 +56,16 @@ public class EvaluatorService {
     private static final String CLAUDE_BASELINE = "single-prompt-claude";
     private static final String GPT4O_BASELINE  = "single-prompt-gpt4o";
 
-    private final CompilationMetric      compilationMetric;
-    private final CoverageMetric         coverageMetric;
-    private final ApiCompletenessMetric  apiCompletenessMetric;
-    private final LlmJudgeMetric         llmJudgeMetric;
-    private final EvalMetricRepository   evalMetricRepository;
-    private final ArtifactRepository     artifactRepository;
-    private final AgentTaskRepository    taskRepository;
-    private final MigrationJobRepository jobRepository;
+    private final CompilationMetric       compilationMetric;
+    private final CoverageMetric          coverageMetric;
+    private final ApiCompletenessMetric   apiCompletenessMetric;
+    private final LlmJudgeMetric          llmJudgeMetric;
+    private final EvalMetricRepository    evalMetricRepository;
+    private final ArtifactRepository      artifactRepository;
+    private final AgentTaskRepository     taskRepository;
+    private final MigrationJobRepository  jobRepository;
+    private final ServiceBoundaryRepository boundaryRepository;
+    private final SharedClassRepository   sharedClassRepository;
 
     @Value("${benchmark.results.dir:results}")
     private String resultsDirProp;
@@ -72,7 +77,9 @@ public class EvaluatorService {
                             EvalMetricRepository evalMetricRepository,
                             ArtifactRepository artifactRepository,
                             AgentTaskRepository taskRepository,
-                            MigrationJobRepository jobRepository) {
+                            MigrationJobRepository jobRepository,
+                            ServiceBoundaryRepository boundaryRepository,
+                            SharedClassRepository sharedClassRepository) {
         this.compilationMetric     = compilationMetric;
         this.coverageMetric        = coverageMetric;
         this.apiCompletenessMetric = apiCompletenessMetric;
@@ -81,6 +88,8 @@ public class EvaluatorService {
         this.artifactRepository    = artifactRepository;
         this.taskRepository        = taskRepository;
         this.jobRepository         = jobRepository;
+        this.boundaryRepository    = boundaryRepository;
+        this.sharedClassRepository = sharedClassRepository;
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────
@@ -120,8 +129,13 @@ public class EvaluatorService {
         saved.add(persist(jobId, MULTI_AGENT, MetricName.LLM_JUDGE_SCORE,
                 judge.score(), judge.judgeModelId(), judge.metadata()));
 
-        log.info("[evaluator] Multi-agent job {} — compile={} cov={} api={} judge={}",
-                jobId, comp.score(), cov.score(), api.score(), judge.score());
+        // 5. Shared class duplication rate (DD2) — 0.0 if no commons detected
+        double sharedRate = computeSharedClassDuplicationRate(jobId);
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.SHARED_CLASS_DUPLICATION_RATE,
+                sharedRate, null, Map.of("source", "shared_classes")));
+
+        log.info("[evaluator] Multi-agent job {} — compile={} cov={} api={} judge={} sharedRate={}",
+                jobId, comp.score(), cov.score(), api.score(), judge.score(), sharedRate);
         return saved;
     }
 
@@ -174,6 +188,21 @@ public class EvaluatorService {
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * Fraction of classes that were extracted into the commons module.
+     * Lower = better after DD2 extraction (less duplication).
+     * Returns 0.0 when commons detection has not been run.
+     */
+    private double computeSharedClassDuplicationRate(Long jobId) {
+        int sharedCount = sharedClassRepository.countByJobId(jobId);
+        if (sharedCount == 0) return 0.0;
+        List<ServiceBoundary> boundaries = boundaryRepository.findByJobId(jobId);
+        int total = boundaries.stream()
+                .mapToInt(b -> b.getClassFqns() == null ? 0 : b.getClassFqns().size())
+                .sum() + sharedCount;
+        return total > 0 ? (double) sharedCount / total : 0.0;
+    }
 
     /**
      * Computes the fraction of SERVICE_GEN tasks for this job where the first

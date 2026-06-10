@@ -12,9 +12,11 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -84,10 +86,16 @@ public class BundleAssembler {
 
         // Only use classFqns that look like service slugs (e.g. "owner-service"),
         // not fully-qualified class names (e.g. "org.petclinic.Owner").
+        // DD2: sort with the -commons module first so Maven builds it before dependents.
         List<String> serviceNames = byService.keySet().stream()
                 .filter(BundleAssembler::isServiceSlug)
-                .sorted()
+                .sorted(commonsFirstComparator())
                 .toList();
+
+        // DD2: find the commons module name (if any) to inject its dependency into other services
+        Optional<String> commonsModule = serviceNames.stream()
+                .filter(s -> s.endsWith("-commons"))
+                .findFirst();
 
         int fileCount = 0;
         try (ZipOutputStream zip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
@@ -98,8 +106,16 @@ public class BundleAssembler {
             for (Map.Entry<String, List<Artifact>> entry : byService.entrySet()) {
                 String svc = entry.getKey();
                 for (Artifact a : entry.getValue()) {
+                    String content = a.getContent();
+                    // DD2: inject commons dependency into per-service pom.xml artifacts
+                    if (commonsModule.isPresent()
+                            && !svc.equals(commonsModule.get())
+                            && "pom.xml".equals(a.getFilePath())
+                            && !content.contains(commonsModule.get())) {
+                        content = injectCommonsDependency(content, commonsModule.get());
+                    }
                     String path = svc + "/" + a.getFilePath();
-                    writeEntry(zip, path, a.getContent());
+                    writeEntry(zip, path, content);
                     fileCount++;
                     log.debug("[bundle] + {}", path);
                 }
@@ -205,6 +221,41 @@ public class BundleAssembler {
     /** Service slugs look like "owner-service", not "org.petclinic.Owner". */
     static boolean isServiceSlug(String name) {
         return name != null && !name.isBlank() && !name.contains(".");
+    }
+
+    /**
+     * Sorts service names so that any {@code *-commons} module comes first.
+     * Maven requires shared libraries to be listed before their dependents.
+     */
+    static Comparator<String> commonsFirstComparator() {
+        return (a, b) -> {
+            boolean aCommons = a.endsWith("-commons");
+            boolean bCommons = b.endsWith("-commons");
+            if (aCommons == bCommons) return a.compareTo(b);
+            return aCommons ? -1 : 1;
+        };
+    }
+
+    /**
+     * Injects a {@code <dependency>} on the commons module into a Maven pom.xml string.
+     *
+     * <p>Inserts before the closing {@code </dependencies>} tag. If no
+     * {@code <dependencies>} block exists, appends one before {@code </project>}.
+     */
+    static String injectCommonsDependency(String pomXml, String commonsArtifactId) {
+        String dep = String.format("""
+                        <dependency>
+                            <groupId>com.modernized</groupId>
+                            <artifactId>%s</artifactId>
+                            <version>1.0.0-SNAPSHOT</version>
+                        </dependency>""", commonsArtifactId);
+
+        if (pomXml.contains("</dependencies>")) {
+            return pomXml.replace("</dependencies>", dep + "\n    </dependencies>");
+        }
+        // No <dependencies> block — insert one before </project>
+        String block = "\n    <dependencies>\n" + dep + "\n    </dependencies>\n";
+        return pomXml.replace("</project>", block + "</project>");
     }
 
     private static void writeEntry(ZipOutputStream zip, String path, String content)

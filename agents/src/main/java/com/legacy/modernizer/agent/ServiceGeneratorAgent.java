@@ -52,7 +52,7 @@ public class ServiceGeneratorAgent {
     );
 
     // -------------------------------------------------------------------------
-    // System prompt — governs format + every compilation-critical rule
+    // System prompts
     // -------------------------------------------------------------------------
 
     private static final String SYSTEM_PROMPT = """
@@ -99,6 +99,48 @@ public class ServiceGeneratorAgent {
             10. ALL imports must be explicit — zero wildcard imports.
             11. Do NOT include spring.datasource properties in Application.java. \
                 The service is configured externally.
+            """;
+
+    /** DD2 — system prompt for generating the shared commons library module. */
+    private static final String COMMONS_SYSTEM_PROMPT = """
+            You are a Java architect generating a shared utility library module \
+            for a modernised legacy application.
+
+            OUTPUT FORMAT — produce ONLY the XML file blocks below. \
+            No markdown. No prose. No explanation.
+
+            <file>
+            <path>pom.xml</path>
+            <content>
+            ... complete pom.xml content ...
+            </content>
+            </file>
+
+            <file>
+            <path>src/main/java/com/modernized/{pkg}/{ClassName}.java</path>
+            <content>
+            ... complete Java source ...
+            </content>
+            </file>
+
+            ... (one <file> block per class)
+
+            MANDATORY RULES — violation causes compilation failure:
+            1.  Java 21; use jakarta.* (NOT javax.*) throughout.
+            2.  groupId = com.modernized; artifactId = {service-name}; packaging = jar.
+            3.  Package root: com.modernized.{pkg}  (all kebab/hyphens removed, lowercase).
+            4.  pom.xml: plain Java library — NO spring-boot-starter-parent, NO spring-boot-maven-plugin. \
+                Use <groupId>com.modernized</groupId> directly as parent-less POM. \
+                Include only: lombok (optional scope), jakarta.persistence-api (provided scope). \
+                Set <java.version>21</java.version>.
+            5.  Generate one Java class per shared class listed. Each class should be a \
+                self-contained utility, base entity, or constant class with reasonable \
+                implementations (no application logic assumed).
+            6.  Base entity classes: annotate with @MappedSuperclass @Data @NoArgsConstructor. \
+                Include an @Id Long id field.
+            7.  Utility classes: public final class with private constructor and static methods.
+            8.  ALL imports must be explicit — zero wildcard imports.
+            9.  NO Application.java — this is a library, not a runnable service.
             """;
 
     // -------------------------------------------------------------------------
@@ -162,12 +204,17 @@ public class ServiceGeneratorAgent {
         task = taskRepository.save(task);
 
         try {
-            // 3. Call LLM
-            String userPrompt = buildUserPrompt(boundary, pkg, contextSnippets);
-            log.debug("[service-gen] Prompt length: {} chars", userPrompt.length());
+            // 3. Call LLM — use commons-specific prompt for -commons boundaries (DD2)
+            boolean isCommons = isCommonsBoundary(serviceName);
+            String systemPrompt = isCommons ? COMMONS_SYSTEM_PROMPT : SYSTEM_PROMPT;
+            String userPrompt   = isCommons
+                    ? buildCommonsUserPrompt(boundary, pkg)
+                    : buildUserPrompt(boundary, pkg, contextSnippets);
+            log.debug("[service-gen] {} prompt length: {} chars",
+                    isCommons ? "commons" : "service", userPrompt.length());
 
             Response<AiMessage> response = chatModel.generate(
-                    List.of(SystemMessage.from(SYSTEM_PROMPT), UserMessage.from(userPrompt))
+                    List.of(SystemMessage.from(systemPrompt), UserMessage.from(userPrompt))
             );
             String raw    = response.content().text();
             TokenUsage tu = response.tokenUsage();
@@ -277,6 +324,28 @@ public class ServiceGeneratorAgent {
         sb.append("  7. src/main/java/com/modernized/").append(pkg)
                 .append("/controller/{PrimaryEntity}Controller.java\n");
 
+        return sb.toString();
+    }
+
+    /** DD2 — true when this boundary is the auto-generated shared commons module. */
+    static boolean isCommonsBoundary(String serviceName) {
+        return serviceName != null && serviceName.endsWith("-commons");
+    }
+
+    String buildCommonsUserPrompt(ServiceBoundary boundary, String pkg) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Generate a shared Java utility library module.\n\n");
+        sb.append("Module name : ").append(boundary.getServiceName()).append("\n");
+        sb.append("Package     : com.modernized.").append(pkg).append("\n");
+        sb.append("Description : ").append(nvl(boundary.getDescription())).append("\n\n");
+        sb.append("Shared classes to implement (one <file> block per class):\n");
+        if (boundary.getClassFqns() != null) {
+            for (String fqn : boundary.getClassFqns()) {
+                String simpleName = fqn.contains(".") ? fqn.substring(fqn.lastIndexOf('.') + 1) : fqn;
+                sb.append("  • ").append(simpleName).append("  (original FQN: ").append(fqn).append(")\n");
+            }
+        }
+        sb.append("\nAlso generate the pom.xml for this plain Java library.\n");
         return sb.toString();
     }
 

@@ -51,7 +51,7 @@ public class LlmJudgeMetric {
             {"correctness":N,"readability":N,"idiomaticity":N,"completeness":N,"dry":N}
             """;
 
-    static final String PLAN_SYSTEM_PROMPT = """
+    public static final String PLAN_SYSTEM_PROMPT = """
             You are a senior software architect evaluating a microservice decomposition plan \
             for a Java monolith. Score the plan on exactly 5 dimensions, each 1–10.
 
