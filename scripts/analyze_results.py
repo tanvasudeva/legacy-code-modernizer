@@ -69,6 +69,7 @@ REPO_NAMES = [r[0] for r in REPOS]
 REPO_LOC   = {r[0]: r[1] for r in REPOS}
 
 METRICS = ["COMPILATION_SUCCESS", "COVERAGE", "API_COMPLETENESS", "LLM_JUDGE_SCORE"]
+REPAIR_METRICS = ["COMPILATION_FIRST_ATTEMPT", "COMPILATION_POST_REPAIR"]
 METRIC_LABELS = {
     "COMPILATION_SUCCESS": "Compilation rate",
     "COVERAGE":            "Test coverage",
@@ -158,6 +159,18 @@ def load_synthetic() -> pd.DataFrame:
                     "system_id":   system,
                     "value":       round(value, 4),
                 })
+
+        # Synthetic repair metrics for multi-agent only (Phase 4.7)
+        final_rate   = float(np.clip(0.85 - 0.35 * diff + rng.normal(0, 0.04), 0.0, 1.0))
+        first_rate   = float(np.clip(final_rate - rng.uniform(0.05, 0.20), 0.0, final_rate))
+        for metric, value in [("COMPILATION_FIRST_ATTEMPT", first_rate),
+                               ("COMPILATION_POST_REPAIR",  final_rate)]:
+            rows.append({
+                "repo_name":   repo,
+                "metric_name": metric,
+                "system_id":   "multi-agent",
+                "value":       round(value, 4),
+            })
 
     df = pd.DataFrame(rows)
     print(f"Generated {len(df)} synthetic rows (20 repos × 4 metrics × 3 systems).")
@@ -668,6 +681,71 @@ def plot_repo_heatmap(df: pd.DataFrame, out_dir: Path) -> None:
     print(f"  Saved {fname}")
 
 
+def render_repair_analysis(df: pd.DataFrame) -> str:
+    """
+    Per-repo table of first-attempt vs post-repair compilation rates.
+
+    Reads COMPILATION_FIRST_ATTEMPT and COMPILATION_POST_REPAIR from df.
+    Falls back gracefully when repair metrics are absent (pre-Phase-4.7 data).
+    """
+    ma = df[df["system_id"] == "multi-agent"]
+    first_df = ma[ma["metric_name"] == "COMPILATION_FIRST_ATTEMPT"]
+    final_df = ma[ma["metric_name"] == "COMPILATION_POST_REPAIR"]
+
+    if first_df.empty and final_df.empty:
+        return (
+            "## Compilation Repair Analysis\n\n"
+            "_No repair-tracking data found. Run the pipeline with Phase 4.7 "
+            "CompilationRepairService enabled to populate COMPILATION_FIRST_ATTEMPT "
+            "and COMPILATION_POST_REPAIR metrics._\n"
+        )
+
+    first_by_repo = first_df.set_index("repo_name")["value"].to_dict()
+    final_by_repo = final_df.set_index("repo_name")["value"].to_dict()
+
+    lines = ["## Compilation Repair Analysis\n"]
+    lines.append(
+        "Comparison of first-attempt compilation rate (before any LLM repair) "
+        "vs. post-repair rate (after up to 3 repair iterations).\n"
+    )
+
+    table_data = []
+    deltas = []
+    for repo, _ in REPOS:
+        first = first_by_repo.get(repo)
+        final = final_by_repo.get(repo)
+        if first is None and final is None:
+            continue
+        first_s = f"{first:.3f}" if first is not None else "—"
+        final_s = f"{final:.3f}" if final is not None else "—"
+        if first is not None and final is not None:
+            delta = final - first
+            deltas.append(delta)
+            delta_s = f"+{delta:.3f}" if delta >= 0 else f"{delta:.3f}"
+            marker = " ✓" if delta > 0.01 else ""
+        else:
+            delta_s = "—"
+            marker = ""
+        table_data.append([repo, first_s, final_s, delta_s + marker])
+
+    lines.append(tabulate(
+        table_data,
+        headers=["Repo", "First-attempt rate", "Post-repair rate", "Δ (improvement)"],
+        tablefmt="github",
+    ))
+    lines.append("")
+
+    if deltas:
+        avg_delta = sum(deltas) / len(deltas)
+        improved  = sum(1 for d in deltas if d > 0.01)
+        lines.append(
+            f"**Average improvement: +{avg_delta:.3f}** across {len(deltas)} repos "
+            f"({improved}/{len(deltas)} repos improved by > 1 pp).\n"
+        )
+
+    return "\n".join(lines)
+
+
 def plot_loc_scatter(df: pd.DataFrame, out_dir: Path) -> None:
     """
     Scatter plot: x = repository LOC (log scale), y = metric score (multi-agent).
@@ -801,6 +879,9 @@ def main():
     print("Computing power analysis …")
     power_section = compute_power_analysis(n=len(REPOS), alpha=0.05)
 
+    print("Computing repair delta analysis …")
+    repair_section = render_repair_analysis(df)
+
     # ── 3. Print summary to terminal ──────────────────────────────────────────
     print("\n" + "═" * 70)
     print("DESCRIPTIVE STATISTICS (mean ± std, n=20)")
@@ -855,6 +936,8 @@ def main():
     md += render_markdown_table(stats, tests)
     md += "\n"
     md += power_section
+    md += "\n"
+    md += repair_section
     md += "\n"
     md += discussion
     (out / "analysis_report.md").write_text(md)

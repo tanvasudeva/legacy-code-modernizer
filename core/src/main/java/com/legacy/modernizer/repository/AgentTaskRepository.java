@@ -14,4 +14,6 @@ public interface AgentTaskRepository extends JpaRepository<AgentTask, Long> {
     List<AgentTask> findByJobIdAndStatus(Long jobId, AgentTaskStatus status);
 
     Optional<AgentTask> findByJobIdAndClassFqnAndTaskType(Long jobId, String classFqn, String taskType);
+
+    List<AgentTask> findByJobIdAndTaskType(Long jobId, String taskType);
 }

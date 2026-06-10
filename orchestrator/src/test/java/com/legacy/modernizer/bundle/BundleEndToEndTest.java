@@ -1,9 +1,13 @@
 package com.legacy.modernizer.bundle;
 
+import com.legacy.modernizer.model.AgentTaskStatus;
+import com.legacy.modernizer.agent.CompilationRepairService;
+import com.legacy.modernizer.model.AgentTask;
 import com.legacy.modernizer.model.Artifact;
 import com.legacy.modernizer.model.ArtifactType;
 import com.legacy.modernizer.model.JobStatus;
 import com.legacy.modernizer.model.MigrationJob;
+import com.legacy.modernizer.repository.AgentTaskRepository;
 import com.legacy.modernizer.repository.ArtifactRepository;
 import com.legacy.modernizer.repository.MigrationJobRepository;
 import org.junit.jupiter.api.*;
@@ -51,9 +55,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class BundleEndToEndTest {
 
     @LocalServerPort private int port;
-    @Autowired private TestRestTemplate restTemplate;
-    @Autowired private MigrationJobRepository jobRepository;
-    @Autowired private ArtifactRepository artifactRepository;
+    @Autowired private TestRestTemplate          restTemplate;
+    @Autowired private MigrationJobRepository    jobRepository;
+    @Autowired private ArtifactRepository        artifactRepository;
+    @Autowired private AgentTaskRepository       taskRepository;
+    @Autowired private CompilationRepairService  repairService;
 
     private static Long jobId;
 
@@ -443,6 +449,115 @@ class BundleEndToEndTest {
 
         } finally {
             deleteTree(tempDir);
+        }
+    }
+
+    /**
+     * Phase 4.7 repair-loop test.
+     *
+     * <p>Seeds a service with a deliberately broken Java file (missing import),
+     * runs {@link CompilationRepairService#compileWithRepair} with maxAttempts=3,
+     * and verifies that:
+     * <ul>
+     *   <li>{@code first_attempt_compiled} was recorded as {@code false}</li>
+     *   <li>{@code repair_attempts} is ≥ 1 (the loop actually ran)</li>
+     * </ul>
+     *
+     * <p>Skipped when PostgreSQL or {@code ANTHROPIC_API_KEY} is unavailable —
+     * the repair LLM call requires a live Claude model.
+     */
+    @Test @Order(10)
+    void repairLoopActivatesOnBrokenArtifact() {
+        assumeTrue(portOpen("localhost", 5432), "PostgreSQL not available");
+        assumeTrue(System.getenv("ANTHROPIC_API_KEY") != null,
+                "ANTHROPIC_API_KEY not set — repair LLM call requires Claude");
+
+        // 1. Seed a job with a broken service (missing import for ResponseEntity)
+        MigrationJob repairJob = jobRepository.save(MigrationJob.builder()
+                .name("repair-test-job")
+                .sourceDirectory("/tmp/repair-test")
+                .status(JobStatus.PENDING)
+                .build());
+        Long repairJobId = repairJob.getId();
+
+        try {
+            // pom.xml — valid
+            artifactRepository.save(Artifact.builder()
+                    .jobId(repairJobId).artifactType(ArtifactType.SERVICE_CODE)
+                    .classFqn("broken-service").filePath("pom.xml").content(SERVICE_POM)
+                    .build());
+
+            // Controller with deliberately missing import → compile error
+            String brokenController = """
+                    package com.modernized.brokenservice.controller;
+
+                    import com.modernized.brokenservice.service.OwnerService;
+                    // Missing: import org.springframework.http.ResponseEntity;
+
+                    import org.springframework.web.bind.annotation.*;
+                    import java.util.List;
+
+                    @RestController
+                    @RequestMapping("/api/broken")
+                    public class BrokenController {
+                        private final OwnerService svc;
+                        public BrokenController(OwnerService svc) { this.svc = svc; }
+
+                        @GetMapping
+                        public ResponseEntity<List<String>> list() {   // ResponseEntity not imported
+                            return ResponseEntity.ok(List.of("a", "b"));
+                        }
+                    }
+                    """;
+
+            List<Artifact> brokenArtifacts = List.of(
+                    artifactRepository.save(Artifact.builder()
+                            .jobId(repairJobId).artifactType(ArtifactType.SERVICE_CODE)
+                            .classFqn("broken-service")
+                            .filePath("src/main/java/com/modernized/brokenservice/Application.java")
+                            .content(APPLICATION_JAVA.replace("ownerservice", "brokenservice"))
+                            .build()),
+                    artifactRepository.save(Artifact.builder()
+                            .jobId(repairJobId).artifactType(ArtifactType.SERVICE_CODE)
+                            .classFqn("broken-service")
+                            .filePath("src/main/java/com/modernized/brokenservice/controller/BrokenController.java")
+                            .content(brokenController)
+                            .build())
+            );
+
+            // 2. Create a tracking task
+            AgentTask task = taskRepository.save(AgentTask.builder()
+                    .jobId(repairJobId).taskType("SERVICE_GEN")
+                    .status(AgentTaskStatus.IN_PROGRESS)
+                    .classFqn("broken-service")
+                    .build());
+
+            // 3. Run repair loop
+            CompilationRepairService.CompilationRepairResult result =
+                    repairService.compileWithRepair(task, brokenArtifacts, 3);
+
+            // 4. Reload task from DB to verify tracking columns were written
+            AgentTask saved = taskRepository.findById(task.getId()).orElseThrow();
+
+            assertThat(saved.getFirstAttemptCompiled())
+                    .as("first_attempt_compiled must be set after repair run")
+                    .isNotNull();
+            assertThat(saved.getFirstAttemptCompiled())
+                    .as("first attempt must have failed (broken import)")
+                    .isFalse();
+            assertThat(saved.getRepairAttempts())
+                    .as("repair_attempts must be ≥ 1 (loop ran at least once)")
+                    .isGreaterThanOrEqualTo(1);
+
+            // If the LLM successfully fixed the import the final result is a bonus pass
+            if (result.success()) {
+                assertThat(result.totalAttempts())
+                        .as("should take more than 1 attempt when first compile failed")
+                        .isGreaterThan(1);
+            }
+
+        } finally {
+            jobRepository.deleteById(repairJobId);
         }
     }
 
