@@ -54,6 +54,20 @@ public class AgentTask {
     @Column(name = "error_message")
     private String errorMessage;
 
+    /**
+     * Number of LLM repair iterations performed after the first failed compile attempt.
+     * 0 means the first attempt succeeded (or repair has not run yet).
+     */
+    @Column(name = "repair_attempts")
+    private Integer repairAttempts = 0;
+
+    /**
+     * Whether the very first LLM-generated code compiled without any repair.
+     * Null when compilation has not been attempted (e.g. non-SERVICE_GEN tasks).
+     */
+    @Column(name = "first_attempt_compiled")
+    private Boolean firstAttemptCompiled;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
