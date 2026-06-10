@@ -7,7 +7,9 @@ import com.legacy.modernizer.eval.metric.LlmJudgeMetric;
 import com.legacy.modernizer.eval.model.EvalMetric;
 import com.legacy.modernizer.eval.model.MetricName;
 import com.legacy.modernizer.eval.repository.EvalMetricRepository;
+import com.legacy.modernizer.model.AgentTask;
 import com.legacy.modernizer.model.Artifact;
+import com.legacy.modernizer.repository.AgentTaskRepository;
 import com.legacy.modernizer.repository.ArtifactRepository;
 import com.legacy.modernizer.repository.MigrationJobRepository;
 import org.slf4j.Logger;
@@ -22,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
 // NOTE: evaluateAll(Path) is intentionally in EvaluatorController (not here)
@@ -56,6 +59,7 @@ public class EvaluatorService {
     private final LlmJudgeMetric         llmJudgeMetric;
     private final EvalMetricRepository   evalMetricRepository;
     private final ArtifactRepository     artifactRepository;
+    private final AgentTaskRepository    taskRepository;
     private final MigrationJobRepository jobRepository;
 
     @Value("${benchmark.results.dir:results}")
@@ -67,6 +71,7 @@ public class EvaluatorService {
                             LlmJudgeMetric llmJudgeMetric,
                             EvalMetricRepository evalMetricRepository,
                             ArtifactRepository artifactRepository,
+                            AgentTaskRepository taskRepository,
                             MigrationJobRepository jobRepository) {
         this.compilationMetric     = compilationMetric;
         this.coverageMetric        = coverageMetric;
@@ -74,6 +79,7 @@ public class EvaluatorService {
         this.llmJudgeMetric        = llmJudgeMetric;
         this.evalMetricRepository  = evalMetricRepository;
         this.artifactRepository    = artifactRepository;
+        this.taskRepository        = taskRepository;
         this.jobRepository         = jobRepository;
     }
 
@@ -91,9 +97,15 @@ public class EvaluatorService {
         List<Artifact> artifacts = artifactRepository.findByJobId(jobId);
         List<EvalMetric> saved = new ArrayList<>();
 
-        // 1. Compilation
+        // 1. Compilation — post-repair final rate
         CompilationMetric.Result comp = compilationMetric.evaluate(artifacts);
-        saved.add(persist(jobId, MULTI_AGENT, MetricName.COMPILATION_SUCCESS, comp.score(), null, comp.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.COMPILATION_SUCCESS,     comp.score(), null, comp.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.COMPILATION_POST_REPAIR, comp.score(), null, comp.metadata()));
+
+        // 1b. First-attempt rate — derived from agent_tasks.first_attempt_compiled
+        double firstAttemptRate = computeFirstAttemptRate(jobId);
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.COMPILATION_FIRST_ATTEMPT,
+                firstAttemptRate, null, Map.of("source", "agent_tasks")));
 
         // 2. Coverage
         CoverageMetric.Result cov = coverageMetric.evaluate(artifacts);
@@ -162,6 +174,22 @@ public class EvaluatorService {
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * Computes the fraction of SERVICE_GEN tasks for this job where the first
+     * LLM-generated code compiled without any repair iteration.
+     * Returns 0.0 when no tasks with repair tracking data exist (e.g. jobs run
+     * before Phase 4.7 was deployed).
+     */
+    private double computeFirstAttemptRate(Long jobId) {
+        List<AgentTask> tasks = taskRepository.findByJobIdAndTaskType(jobId, "SERVICE_GEN");
+        List<AgentTask> tracked = tasks.stream()
+                .filter(t -> t.getFirstAttemptCompiled() != null)
+                .toList();
+        if (tracked.isEmpty()) return 0.0;
+        long firstOk = tracked.stream().filter(t -> Boolean.TRUE.equals(t.getFirstAttemptCompiled())).count();
+        return (double) firstOk / tracked.size();
+    }
 
     private EvalMetric persist(Long jobId, String systemId, MetricName name,
                                double value, String judgeModel,
