@@ -103,19 +103,25 @@ public class ServiceGeneratorAgent {
 
     // -------------------------------------------------------------------------
 
-    private final ChatLanguageModel chatModel;
-    private final AgentTaskRepository taskRepository;
-    private final ArtifactRepository  artifactRepository;
+    private final ChatLanguageModel        chatModel;
+    private final AgentTaskRepository      taskRepository;
+    private final ArtifactRepository       artifactRepository;
+    private final CompilationRepairService repairService;
 
     @Value("${anthropic.model:ollama}")
     private String modelName;
 
-    public ServiceGeneratorAgent(ChatLanguageModel chatModel,
-                                 AgentTaskRepository taskRepository,
-                                 ArtifactRepository artifactRepository) {
+    @Value("${repair.max-attempts:3}")
+    private int maxRepairAttempts;
+
+    public ServiceGeneratorAgent(ChatLanguageModel        chatModel,
+                                 AgentTaskRepository      taskRepository,
+                                 ArtifactRepository       artifactRepository,
+                                 CompilationRepairService repairService) {
         this.chatModel         = chatModel;
         this.taskRepository    = taskRepository;
         this.artifactRepository = artifactRepository;
+        this.repairService     = repairService;
     }
 
     // -------------------------------------------------------------------------
@@ -192,13 +198,25 @@ public class ServiceGeneratorAgent {
                 log.debug("[service-gen] Saved artifact: {}", f.filePath());
             }
 
-            // 6. Mark task COMPLETED
+            // 6. Compile + repair loop (tracks first_attempt_compiled and repair_attempts on task)
+            CompilationRepairService.CompilationRepairResult repair =
+                    repairService.compileWithRepair(task, artifacts, maxRepairAttempts);
+            log.info("[service-gen] {} compile result: firstAttempt={} final={} attempts={}",
+                    serviceName, repair.firstAttemptSuccess(), repair.success(), repair.totalAttempts());
+
+            // Re-read artifacts in case repair updated content
+            artifacts = artifactRepository.findByJobIdAndClassFqn(jobId, serviceName);
+
+            // 7. Mark task COMPLETED
             task.setStatus(AgentTaskStatus.COMPLETED);
             task.setModelUsed(modelName);
             task.setTokensUsed(tokens > 0 ? tokens : null);
             task.setOutputData(Map.of(
-                    "filesGenerated", String.valueOf(files.size()),
-                    "serviceName",    serviceName
+                    "filesGenerated",        String.valueOf(files.size()),
+                    "serviceName",           serviceName,
+                    "firstAttemptCompiled",  String.valueOf(repair.firstAttemptSuccess()),
+                    "finalCompiled",         String.valueOf(repair.success()),
+                    "repairAttempts",        String.valueOf(repair.totalAttempts() - 1)
             ));
             task = taskRepository.save(task);
 
