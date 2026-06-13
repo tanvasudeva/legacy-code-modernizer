@@ -466,6 +466,68 @@ class BundleEndToEndTest {
      * <p>Skipped when PostgreSQL or {@code ANTHROPIC_API_KEY} is unavailable —
      * the repair LLM call requires a live Claude model.
      */
+    @Test @Order(11)
+    void commonsModuleAppearsFirstInRootPom() throws Exception {
+        assumeTrue(portOpen("localhost", 5432), "PostgreSQL not available");
+
+        // Seed a job that has both a regular service AND a -commons module
+        MigrationJob commonsJob = jobRepository.save(MigrationJob.builder()
+                .name("commons-test-job")
+                .sourceDirectory("/tmp/commons-test")
+                .status(JobStatus.PENDING)
+                .build());
+        Long commonsJobId = commonsJob.getId();
+
+        try {
+            // Seed commons module pom.xml (plain library — no Spring Boot parent)
+            String commonsPom = """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <project xmlns="http://maven.apache.org/POM/4.0.0"
+                             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                             xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+                        <modelVersion>4.0.0</modelVersion>
+                        <groupId>com.modernized</groupId>
+                        <artifactId>petclinic-commons</artifactId>
+                        <version>1.0.0-SNAPSHOT</version>
+                        <properties><java.version>21</java.version></properties>
+                    </project>
+                    """;
+
+            artifactRepository.save(Artifact.builder()
+                    .jobId(commonsJobId).artifactType(ArtifactType.SERVICE_CODE)
+                    .classFqn("petclinic-commons").filePath("pom.xml").content(commonsPom)
+                    .build());
+
+            // Seed owner-service pom.xml (Spring Boot service)
+            artifactRepository.save(Artifact.builder()
+                    .jobId(commonsJobId).artifactType(ArtifactType.SERVICE_CODE)
+                    .classFqn("owner-service").filePath("pom.xml").content(SERVICE_POM)
+                    .build());
+
+            byte[] zip = downloadBundle(commonsJobId);
+            String rootPom = readEntry(zip, "pom.xml");
+
+            // ① commons module must appear in root pom's <modules>
+            assertThat(rootPom).contains("<module>petclinic-commons</module>");
+            assertThat(rootPom).contains("<module>owner-service</module>");
+
+            // ② commons module must come BEFORE owner-service in <modules>
+            int commonsIdx    = rootPom.indexOf("<module>petclinic-commons</module>");
+            int ownerSvcIdx   = rootPom.indexOf("<module>owner-service</module>");
+            assertThat(commonsIdx)
+                    .as("petclinic-commons must be listed before owner-service in root pom modules")
+                    .isLessThan(ownerSvcIdx);
+
+            // ③ owner-service pom.xml must have commons dependency injected
+            String svcPom = readEntry(zip, "owner-service/pom.xml");
+            assertThat(svcPom).contains("petclinic-commons");
+            assertThat(svcPom).contains("<artifactId>petclinic-commons</artifactId>");
+
+        } finally {
+            jobRepository.deleteById(commonsJobId);
+        }
+    }
+
     @Test @Order(10)
     void repairLoopActivatesOnBrokenArtifact() {
         assumeTrue(portOpen("localhost", 5432), "PostgreSQL not available");
@@ -571,6 +633,13 @@ class BundleEndToEndTest {
 
     private byte[] download() {
         ResponseEntity<byte[]> r = restTemplate.getForEntity(url(), byte[].class);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return r.getBody();
+    }
+
+    private byte[] downloadBundle(Long id) {
+        String bundleUrl = "http://localhost:" + port + "/api/jobs/" + id + "/bundle";
+        ResponseEntity<byte[]> r = restTemplate.getForEntity(bundleUrl, byte[].class);
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
         return r.getBody();
     }
