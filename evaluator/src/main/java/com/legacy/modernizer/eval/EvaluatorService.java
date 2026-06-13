@@ -1,7 +1,9 @@
 package com.legacy.modernizer.eval;
 
 import com.legacy.modernizer.eval.metric.ApiCompletenessMetric;
+import com.legacy.modernizer.eval.metric.CohesionMetric;
 import com.legacy.modernizer.eval.metric.CompilationMetric;
+import com.legacy.modernizer.eval.metric.CouplingMetric;
 import com.legacy.modernizer.eval.metric.CoverageMetric;
 import com.legacy.modernizer.eval.metric.LlmJudgeMetric;
 import com.legacy.modernizer.eval.model.EvalMetric;
@@ -56,16 +58,18 @@ public class EvaluatorService {
     private static final String CLAUDE_BASELINE = "single-prompt-claude";
     private static final String GPT4O_BASELINE  = "single-prompt-gpt4o";
 
-    private final CompilationMetric       compilationMetric;
-    private final CoverageMetric          coverageMetric;
-    private final ApiCompletenessMetric   apiCompletenessMetric;
-    private final LlmJudgeMetric          llmJudgeMetric;
-    private final EvalMetricRepository    evalMetricRepository;
-    private final ArtifactRepository      artifactRepository;
-    private final AgentTaskRepository     taskRepository;
-    private final MigrationJobRepository  jobRepository;
+    private final CompilationMetric         compilationMetric;
+    private final CoverageMetric            coverageMetric;
+    private final ApiCompletenessMetric     apiCompletenessMetric;
+    private final LlmJudgeMetric            llmJudgeMetric;
+    private final CouplingMetric            couplingMetric;
+    private final CohesionMetric            cohesionMetric;
+    private final EvalMetricRepository      evalMetricRepository;
+    private final ArtifactRepository        artifactRepository;
+    private final AgentTaskRepository       taskRepository;
+    private final MigrationJobRepository    jobRepository;
     private final ServiceBoundaryRepository boundaryRepository;
-    private final SharedClassRepository   sharedClassRepository;
+    private final SharedClassRepository     sharedClassRepository;
 
     @Value("${benchmark.results.dir:results}")
     private String resultsDirProp;
@@ -74,6 +78,8 @@ public class EvaluatorService {
                             CoverageMetric coverageMetric,
                             ApiCompletenessMetric apiCompletenessMetric,
                             LlmJudgeMetric llmJudgeMetric,
+                            CouplingMetric couplingMetric,
+                            CohesionMetric cohesionMetric,
                             EvalMetricRepository evalMetricRepository,
                             ArtifactRepository artifactRepository,
                             AgentTaskRepository taskRepository,
@@ -84,6 +90,8 @@ public class EvaluatorService {
         this.coverageMetric        = coverageMetric;
         this.apiCompletenessMetric = apiCompletenessMetric;
         this.llmJudgeMetric        = llmJudgeMetric;
+        this.couplingMetric        = couplingMetric;
+        this.cohesionMetric        = cohesionMetric;
         this.evalMetricRepository  = evalMetricRepository;
         this.artifactRepository    = artifactRepository;
         this.taskRepository        = taskRepository;
@@ -134,8 +142,23 @@ public class EvaluatorService {
         saved.add(persist(jobId, MULTI_AGENT, MetricName.SHARED_CLASS_DUPLICATION_RATE,
                 sharedRate, null, Map.of("source", "shared_classes")));
 
-        log.info("[evaluator] Multi-agent job {} — compile={} cov={} api={} judge={} sharedRate={}",
-                jobId, comp.score(), cov.score(), api.score(), judge.score(), sharedRate);
+        // 6. Inter-service coupling — cross-boundary CALLS / total CALLS in Neo4j graph
+        List<ServiceBoundary> boundaries = boundaryRepository.findByJobId(jobId);
+        CouplingMetric.Result coupling = couplingMetric.evaluate(boundaries);
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.INTER_SERVICE_COUPLING,
+                coupling.score(), null, coupling.metadata()));
+
+        // 7. LCOM4 cohesion — average and perfect-cohesion % across generated classes
+        CohesionMetric.Result cohesion = cohesionMetric.evaluate(artifacts);
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.AVG_LCOM4,
+                cohesion.avgLcom4(), null, cohesion.metadata()));
+        saved.add(persist(jobId, MULTI_AGENT, MetricName.PERFECT_COHESION_PCT,
+                cohesion.perfectCohesionPct(), null, Map.of("source", "lcom4")));
+
+        log.info("[evaluator] Multi-agent job {} — compile={} cov={} api={} judge={} "
+                + "sharedRate={} coupling={} avgLcom4={} perfectCohesionPct={}",
+                jobId, comp.score(), cov.score(), api.score(), judge.score(),
+                sharedRate, coupling.score(), cohesion.avgLcom4(), cohesion.perfectCohesionPct());
         return saved;
     }
 
@@ -176,8 +199,21 @@ public class EvaluatorService {
         saved.add(persist(jobId, systemId, MetricName.LLM_JUDGE_SCORE,
                 judge.score(), judge.judgeModelId(), judge.metadata()));
 
-        log.info("[evaluator] Baseline {} job {} — compile={} cov={} api={} judge={}",
-                systemId, jobId, comp.score(), cov.score(), api.score(), judge.score());
+        // 5. Inter-service coupling — import-reference analysis on extracted code
+        CouplingMetric.Result coupling = couplingMetric.evaluateBaseline(responseJson, rawResponseText, systemId);
+        saved.add(persist(jobId, systemId, MetricName.INTER_SERVICE_COUPLING,
+                coupling.score(), null, coupling.metadata()));
+
+        // 6. LCOM4 cohesion — on extracted Java blocks
+        CohesionMetric.Result cohesion = cohesionMetric.evaluateBaseline(rawResponseText, systemId);
+        saved.add(persist(jobId, systemId, MetricName.AVG_LCOM4,
+                cohesion.avgLcom4(), null, cohesion.metadata()));
+        saved.add(persist(jobId, systemId, MetricName.PERFECT_COHESION_PCT,
+                cohesion.perfectCohesionPct(), null, Map.of("source", "lcom4")));
+
+        log.info("[evaluator] Baseline {} job {} — compile={} cov={} api={} judge={} coupling={} avgLcom4={}",
+                systemId, jobId, comp.score(), cov.score(), api.score(), judge.score(),
+                coupling.score(), cohesion.avgLcom4());
         return saved;
     }
 
