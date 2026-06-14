@@ -54,7 +54,9 @@ public class StreamInitializer {
             log.info("Created consumer group '{}' on stream '{}'", groupName, streamKey);
         } catch (RedisSystemException e) {
             String msg = e.getMessage() != null ? e.getMessage() : "";
-            if (msg.contains("BUSYGROUP")) {
+            String causeMsg = (e.getCause() != null && e.getCause().getMessage() != null)
+                    ? e.getCause().getMessage() : "";
+            if (msg.contains("BUSYGROUP") || causeMsg.contains("BUSYGROUP")) {
                 log.debug("Consumer group '{}' already exists on '{}'", groupName, streamKey);
             } else {
                 throw e;

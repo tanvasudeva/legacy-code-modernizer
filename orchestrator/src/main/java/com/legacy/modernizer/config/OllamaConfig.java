@@ -32,6 +32,7 @@ public class OllamaConfig {
                 .modelName(model)
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .temperature(0.0)
+                .numPredict(4096)
                 .build();
     }
 
