@@ -45,7 +45,7 @@ public class TestWriterAgent {
     private static final Logger log = LoggerFactory.getLogger(TestWriterAgent.class);
 
     private static final Pattern FILE_BLOCK = Pattern.compile(
-            "<file>\\s*<path>(.*?)</path>\\s*<content>(.*?)</content>\\s*</file>",
+            "<file>\\s*<path>(.*?)</path>\\s*<content>(.*?)(?:</content>\\s*)?</file>",
             Pattern.DOTALL
     );
 

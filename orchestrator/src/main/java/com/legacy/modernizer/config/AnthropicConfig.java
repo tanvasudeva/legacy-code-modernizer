@@ -41,7 +41,7 @@ public class AnthropicConfig {
                 .modelName(model)
                 .maxTokens(maxTokens)
                 .temperature(0.0)
-                .timeout(Duration.ofSeconds(120))
+                .timeout(Duration.ofSeconds(600))
                 .build();
     }
 }

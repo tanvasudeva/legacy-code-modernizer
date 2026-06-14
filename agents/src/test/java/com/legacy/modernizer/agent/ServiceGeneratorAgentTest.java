@@ -32,9 +32,10 @@ import static org.mockito.Mockito.*;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ServiceGeneratorAgentTest {
 
-    @Mock ChatLanguageModel    chatModel;
-    @Mock AgentTaskRepository  taskRepository;
-    @Mock ArtifactRepository   artifactRepository;
+    @Mock ChatLanguageModel       chatModel;
+    @Mock AgentTaskRepository     taskRepository;
+    @Mock ArtifactRepository      artifactRepository;
+    @Mock CompilationRepairService repairService;
 
     ServiceGeneratorAgent agent;
     AtomicLong idSeq = new AtomicLong(1);
@@ -91,7 +92,7 @@ class ServiceGeneratorAgentTest {
 
     @BeforeEach
     void setUp() {
-        agent = new ServiceGeneratorAgent(chatModel, taskRepository, artifactRepository);
+        agent = new ServiceGeneratorAgent(chatModel, taskRepository, artifactRepository, repairService);
 
         when(taskRepository.save(any())).thenAnswer(inv -> {
             AgentTask t = inv.getArgument(0);
