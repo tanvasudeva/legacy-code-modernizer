@@ -49,10 +49,30 @@ public class CompilationRepairService {
     private static final Pattern MVN_ERROR = Pattern.compile(
             "\\[ERROR]\\s+(.*?\\.java):\\[(\\d+),\\d+]\\s+(.+)");
 
-    // Same <file> format as ServiceGeneratorAgent
+    // Same <file> format as ServiceGeneratorAgent — </content> is optional for small models
     private static final Pattern FILE_BLOCK = Pattern.compile(
-            "<file>\\s*<path>(.*?)</path>\\s*<content>(.*?)</content>\\s*</file>",
+            "<file>\\s*<path>(.*?)</path>\\s*<content>(.*?)(?:</content>\\s*)?</file>",
             Pattern.DOTALL);
+
+    private static final String SB_PARENT = """
+                <parent>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-parent</artifactId>
+                    <version>3.2.5</version>
+                    <relativePath/>
+                </parent>
+            """;
+
+    /** Injects Spring Boot parent into a pom.xml that the LLM generated without one. */
+    static String patchPomParent(String pom) {
+        if (pom == null || pom.contains("<parent>")) return pom;
+        // fix common model mistake: wrong groupId for jakarta.persistence
+        pom = pom.replace(
+                "<groupId>jakarta.persistence-api</groupId>",
+                "<groupId>jakarta.persistence</groupId>");
+        // insert parent block right after </modelVersion>
+        return pom.replace("</modelVersion>", "</modelVersion>\n" + SB_PARENT);
+    }
 
     private static final String REPAIR_SYSTEM_PROMPT = """
             You are a Java compiler-error specialist. You will receive Spring Boot 3 source files \
@@ -193,7 +213,10 @@ public class CompilationRepairService {
                 if (!target.startsWith(tempDir))
                     throw new SecurityException("Path traversal: " + a.getFilePath());
                 Files.createDirectories(target.getParent());
-                Files.writeString(target, a.getContent());
+                String content = "pom.xml".equals(a.getFilePath())
+                        ? patchPomParent(a.getContent())
+                        : a.getContent();
+                Files.writeString(target, content);
             }
 
             if (!Files.exists(tempDir.resolve("pom.xml"))) {
