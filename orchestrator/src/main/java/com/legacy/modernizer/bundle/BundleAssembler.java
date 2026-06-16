@@ -110,12 +110,14 @@ public class BundleAssembler {
                 String svc = entry.getKey();
                 for (Artifact a : entry.getValue().values()) {
                     String content = a.getContent();
-                    // DD2: inject commons dependency into per-service pom.xml artifacts
-                    if (commonsModule.isPresent()
-                            && !svc.equals(commonsModule.get())
-                            && "pom.xml".equals(a.getFilePath())
-                            && !content.contains(commonsModule.get())) {
-                        content = injectCommonsDependency(content, commonsModule.get());
+                    if ("pom.xml".equals(a.getFilePath())) {
+                        content = patchPomParent(content);
+                        // DD2: inject commons dependency
+                        if (commonsModule.isPresent()
+                                && !svc.equals(commonsModule.get())
+                                && !content.contains(commonsModule.get())) {
+                            content = injectCommonsDependency(content, commonsModule.get());
+                        }
                     }
                     String path = svc + "/" + a.getFilePath();
                     writeEntry(zip, path, content);
@@ -237,6 +239,23 @@ public class BundleAssembler {
             if (aCommons == bCommons) return a.compareTo(b);
             return aCommons ? -1 : 1;
         };
+    }
+
+    /** Adds Spring Boot parent and fixes jakarta.persistence groupId if the LLM omitted them. */
+    static String patchPomParent(String pom) {
+        if (pom == null || pom.contains("<parent>")) return pom;
+        pom = pom.replace(
+                "<groupId>jakarta.persistence-api</groupId>",
+                "<groupId>jakarta.persistence</groupId>");
+        String parent = """
+                    <parent>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-starter-parent</artifactId>
+                        <version>3.2.5</version>
+                        <relativePath/>
+                    </parent>
+                """;
+        return pom.replace("</modelVersion>", "</modelVersion>\n" + parent);
     }
 
     /**
