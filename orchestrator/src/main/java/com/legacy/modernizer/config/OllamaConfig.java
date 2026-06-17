@@ -5,6 +5,7 @@ import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaEmbeddingModel;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -26,6 +27,7 @@ public class OllamaConfig {
     private int timeoutSeconds;
 
     @Bean
+    @ConditionalOnMissingBean(ChatLanguageModel.class)
     public ChatLanguageModel chatLanguageModel() {
         return OllamaChatModel.builder()
                 .baseUrl(baseUrl)
