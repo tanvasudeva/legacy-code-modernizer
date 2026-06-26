@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -74,14 +73,18 @@ public class BundleAssembler {
         List<Artifact> all = artifactRepository.findByJobId(jobId);
         log.info("[bundle] Assembling job {} — {} raw artifacts", jobId, all.size());
 
-        // Group by service name (classFqn on code/doc artifacts is the service name,
-        // e.g. "owner-service").  We use LinkedHashMap to preserve insertion order.
-        Map<String, List<Artifact>> byService = new LinkedHashMap<>();
-        for (Artifact a : all) {
+        // Group by service name → (filePath → artifact).
+        // Sort by id ascending so higher-id (latest repair attempt) overwrites earlier versions
+        // of the same file, preventing ZipException on duplicate entries.
+        Map<String, Map<String, Artifact>> byService = new LinkedHashMap<>();
+        for (Artifact a : all.stream()
+                .sorted(Comparator.comparingLong(Artifact::getId))
+                .toList()) {
             if (!BUNDLED_TYPES.contains(a.getArtifactType())) continue;
             if (a.getFilePath() == null || a.getContent() == null) continue;
             String svc = a.getClassFqn() != null ? a.getClassFqn() : "_misc";
-            byService.computeIfAbsent(svc, k -> new ArrayList<>()).add(a);
+            byService.computeIfAbsent(svc, k -> new LinkedHashMap<>())
+                     .put(a.getFilePath(), a);
         }
 
         // Only use classFqns that look like service slugs (e.g. "owner-service"),
@@ -103,16 +106,18 @@ public class BundleAssembler {
             writeEntry(zip, "docker-compose.yml", generateDockerCompose(serviceNames));
             fileCount += 2;
 
-            for (Map.Entry<String, List<Artifact>> entry : byService.entrySet()) {
+            for (Map.Entry<String, Map<String, Artifact>> entry : byService.entrySet()) {
                 String svc = entry.getKey();
-                for (Artifact a : entry.getValue()) {
+                for (Artifact a : entry.getValue().values()) {
                     String content = a.getContent();
-                    // DD2: inject commons dependency into per-service pom.xml artifacts
-                    if (commonsModule.isPresent()
-                            && !svc.equals(commonsModule.get())
-                            && "pom.xml".equals(a.getFilePath())
-                            && !content.contains(commonsModule.get())) {
-                        content = injectCommonsDependency(content, commonsModule.get());
+                    if ("pom.xml".equals(a.getFilePath())) {
+                        content = patchPomParent(content);
+                        // DD2: inject commons dependency
+                        if (commonsModule.isPresent()
+                                && !svc.equals(commonsModule.get())
+                                && !content.contains(commonsModule.get())) {
+                            content = injectCommonsDependency(content, commonsModule.get());
+                        }
                     }
                     String path = svc + "/" + a.getFilePath();
                     writeEntry(zip, path, content);
@@ -234,6 +239,23 @@ public class BundleAssembler {
             if (aCommons == bCommons) return a.compareTo(b);
             return aCommons ? -1 : 1;
         };
+    }
+
+    /** Adds Spring Boot parent and fixes jakarta.persistence groupId if the LLM omitted them. */
+    static String patchPomParent(String pom) {
+        if (pom == null || pom.contains("<parent>")) return pom;
+        pom = pom.replace(
+                "<groupId>jakarta.persistence-api</groupId>",
+                "<groupId>jakarta.persistence</groupId>");
+        String parent = """
+                    <parent>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-starter-parent</artifactId>
+                        <version>3.2.5</version>
+                        <relativePath/>
+                    </parent>
+                """;
+        return pom.replace("</modelVersion>", "</modelVersion>\n" + parent);
     }
 
     /**

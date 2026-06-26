@@ -45,11 +45,22 @@ public class ServiceGeneratorAgent {
 
     private static final Logger log = LoggerFactory.getLogger(ServiceGeneratorAgent.class);
 
-    // Matches:  <file>\n<path>…</path>\n<content>…</content>\n</file>
+    // Matches:  <file>\n<path>…</path>\n<content>…[</content>]\n</file>
+    // </content> is optional — small models consistently omit it
     private static final Pattern FILE_BLOCK = Pattern.compile(
-            "<file>\\s*<path>(.*?)</path>\\s*<content>(.*?)</content>\\s*</file>",
+            "<file>\\s*<path>(.*?)</path>\\s*<content>(.*?)(?:</content>\\s*)?</file>",
             Pattern.DOTALL
     );
+
+    // Fallback: ```java … ``` markdown blocks (small models ignore XML format)
+    private static final Pattern MARKDOWN_JAVA_BLOCK = Pattern.compile(
+            "```(?:java|xml)?\\s*\\n(.*?)```",
+            Pattern.DOTALL
+    );
+    // Extract package + class name to derive a file path
+    private static final Pattern PACKAGE_DECL   = Pattern.compile("^\\s*package\\s+([\\w.]+)\\s*;", Pattern.MULTILINE);
+    private static final Pattern CLASS_DECL     = Pattern.compile(
+            "(?:public\\s+)?(?:class|interface|enum|record)\\s+(\\w+)", Pattern.MULTILINE);
 
     // -------------------------------------------------------------------------
     // System prompts
@@ -220,6 +231,8 @@ public class ServiceGeneratorAgent {
             TokenUsage tu = response.tokenUsage();
             int tokens    = (tu != null) ? tu.totalTokenCount() : 0;
             log.info("[service-gen] LLM response: {} chars, {} tokens", raw.length(), tokens);
+            log.debug("[service-gen][{}] RAW RESPONSE LAST 300 CHARS:\n{}", serviceName,
+                    raw.length() > 300 ? raw.substring(raw.length() - 300) : raw);
 
             // 4. Parse <file> blocks
             List<GeneratedFile> files = parseFileBlocks(raw);
@@ -363,7 +376,36 @@ public class ServiceGeneratorAgent {
                 files.add(new GeneratedFile(path, content));
             }
         }
+        if (!files.isEmpty()) return files;
+
+        // Fallback: model used markdown ```java blocks instead of <file> XML
+        log.debug("[service-gen] No <file> blocks found — trying markdown fallback");
+        Matcher md = MARKDOWN_JAVA_BLOCK.matcher(raw);
+        int idx = 0;
+        while (md.find()) {
+            String content = md.group(1).strip();
+            if (content.isEmpty()) continue;
+            String path = inferPathFromContent(content, idx++);
+            files.add(new GeneratedFile(path, content));
+        }
+        if (!files.isEmpty()) log.info("[service-gen] Markdown fallback extracted {} block(s)", files.size());
         return files;
+    }
+
+    private String inferPathFromContent(String content, int idx) {
+        // Try to derive path from package + class name
+        Matcher pkg = PACKAGE_DECL.matcher(content);
+        Matcher cls = CLASS_DECL.matcher(content);
+        if (pkg.find() && cls.find()) {
+            String pkgPath = pkg.group(1).replace('.', '/');
+            String className = cls.group(1);
+            // pom.xml heuristic: no package declaration but contains <project>
+            return "src/main/java/" + pkgPath + "/" + className + ".java";
+        }
+        if (content.contains("<project") || content.contains("<dependency")) {
+            return "pom.xml";
+        }
+        return "src/main/java/Unknown_" + idx + ".java";
     }
 
     // -------------------------------------------------------------------------
