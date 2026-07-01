@@ -1,5 +1,9 @@
 package com.legacy.modernizer.agent;
 
+import com.github.javaparser.ParseProblemException;
+import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.legacy.modernizer.model.AgentTask;
 import com.legacy.modernizer.model.AgentTaskStatus;
 import com.legacy.modernizer.model.Artifact;
@@ -18,11 +22,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Phase 3.1 — Service Generator Agent.
@@ -193,6 +204,13 @@ public class ServiceGeneratorAgent {
     public ServiceGenerationResult generate(Long jobId,
                                             ServiceBoundary boundary,
                                             List<String> contextSnippets) {
+        return generate(jobId, boundary, contextSnippets, null);
+    }
+
+    public ServiceGenerationResult generate(Long jobId,
+                                            ServiceBoundary boundary,
+                                            List<String> contextSnippets,
+                                            Path srcDir) {
         String serviceName = boundary.getServiceName();
         String pkg         = toPackageName(serviceName);
         log.info("[service-gen] Generating {} (pkg={}) for job {}", serviceName, pkg, jobId);
@@ -218,9 +236,16 @@ public class ServiceGeneratorAgent {
             // 3. Call LLM — use commons-specific prompt for -commons boundaries (DD2)
             boolean isCommons = isCommonsBoundary(serviceName);
             String systemPrompt = isCommons ? COMMONS_SYSTEM_PROMPT : SYSTEM_PROMPT;
+            List<String> methodSignatures = (srcDir != null && !isCommons)
+                    ? extractMethodSignatures(srcDir, boundary.getClassFqns())
+                    : List.of();
+            if (!methodSignatures.isEmpty()) {
+                log.info("[service-gen] Extracted {} method signatures from source for {}",
+                        methodSignatures.size(), serviceName);
+            }
             String userPrompt   = isCommons
                     ? buildCommonsUserPrompt(boundary, pkg)
-                    : buildUserPrompt(boundary, pkg, contextSnippets);
+                    : buildUserPrompt(boundary, pkg, contextSnippets, methodSignatures);
             log.debug("[service-gen] {} prompt length: {} chars",
                     isCommons ? "commons" : "service", userPrompt.length());
 
@@ -299,6 +324,11 @@ public class ServiceGeneratorAgent {
     // -------------------------------------------------------------------------
 
     String buildUserPrompt(ServiceBoundary boundary, String pkg, List<String> contextSnippets) {
+        return buildUserPrompt(boundary, pkg, contextSnippets, List.of());
+    }
+
+    String buildUserPrompt(ServiceBoundary boundary, String pkg,
+                           List<String> contextSnippets, List<String> methodSignatures) {
         StringBuilder sb = new StringBuilder();
         sb.append("Generate a Spring Boot 3 microservice.\n\n");
 
@@ -315,6 +345,14 @@ public class ServiceGeneratorAgent {
             sb.append("  • ").append(fqn).append("\n");
         }
         sb.append("\n");
+
+        if (!methodSignatures.isEmpty()) {
+            sb.append("REQUIRED public methods — you MUST implement ALL of these with the EXACT method names:\n");
+            for (String sig : methodSignatures) {
+                sb.append("  • ").append(sig).append("\n");
+            }
+            sb.append("\n");
+        }
 
         if (!contextSnippets.isEmpty()) {
             sb.append("Reference code retrieved from the original codebase:\n\n");
@@ -411,6 +449,48 @@ public class ServiceGeneratorAgent {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Walks srcDir to find source files for the given class FQNs and extracts
+     * their public method signatures (returnType methodName(paramType paramName, ...)).
+     */
+    List<String> extractMethodSignatures(Path srcDir, List<String> classFqns) {
+        if (srcDir == null || !Files.isDirectory(srcDir) || classFqns == null || classFqns.isEmpty()) {
+            return List.of();
+        }
+        Set<String> targetFqns = new HashSet<>(classFqns);
+        List<String> signatures = new ArrayList<>();
+
+        try (Stream<Path> walk = Files.walk(srcDir)) {
+            walk.filter(p -> p.toString().endsWith(".java"))
+                .forEach(file -> {
+                    try {
+                        CompilationUnit cu = StaticJavaParser.parse(file);
+                        String pkg = cu.getPackageDeclaration()
+                                .map(pd -> pd.getNameAsString()).orElse("");
+                        // Check if this file belongs to any target class
+                        boolean matched = cu.findAll(com.github.javaparser.ast.body.ClassOrInterfaceDeclaration.class)
+                                .stream()
+                                .anyMatch(c -> targetFqns.contains(
+                                        pkg.isEmpty() ? c.getNameAsString() : pkg + "." + c.getNameAsString()));
+                        if (!matched) return;
+                        cu.findAll(MethodDeclaration.class).stream()
+                                .filter(m -> m.isPublic())
+                                .forEach(m -> {
+                                    String params = m.getParameters().stream()
+                                            .map(p -> p.getType().asString() + " " + p.getNameAsString())
+                                            .collect(Collectors.joining(", "));
+                                    signatures.add(m.getType().asString()
+                                            + " " + m.getNameAsString()
+                                            + "(" + params + ")");
+                                });
+                    } catch (ParseProblemException | IOException ignored) {}
+                });
+        } catch (IOException e) {
+            log.warn("[service-gen] Could not walk srcDir for method extraction: {}", e.getMessage());
+        }
+        return signatures;
+    }
 
     /** "owner-service" → "ownerservice" */
     static String toPackageName(String serviceName) {

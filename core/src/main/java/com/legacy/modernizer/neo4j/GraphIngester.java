@@ -205,6 +205,30 @@ public class GraphIngester {
         }
     }
 
+    /**
+     * Returns cross-cluster CALLS edge counts: fromCluster → toCluster → count.
+     * Only cross-cluster edges are included (same-cluster edges are omitted).
+     */
+    public Map<String, Map<String, Integer>> computeInterClusterEdges(Map<String, String> clusterMap) {
+        Map<String, Map<String, Integer>> result = new LinkedHashMap<>();
+        try (Session session = driver.session()) {
+            session.run("MATCH (a:Class)-[:CALLS]->(b:Class) RETURN a.fqn AS fromFqn, b.fqn AS toFqn")
+                    .list().forEach(row -> {
+                        String fromFqn     = row.get("fromFqn").asString();
+                        String toFqn       = row.get("toFqn").asString();
+                        String fromCluster = clusterMap.get(fromFqn);
+                        String toCluster   = clusterMap.get(toFqn);
+                        if (fromCluster == null || toCluster == null
+                                || fromCluster.equals(toCluster)) return;
+                        result.computeIfAbsent(fromCluster, k -> new LinkedHashMap<>())
+                              .merge(toCluster, 1, Integer::sum);
+                    });
+        } catch (Exception e) {
+            log.warn("[graph] computeInterClusterEdges failed: {}", e.getMessage());
+        }
+        return result;
+    }
+
     private Map<String, String> buildNameToFqn(List<ClassNode> nodes) {
         Map<String, String> map = new LinkedHashMap<>();
         for (ClassNode n : nodes) map.putIfAbsent(n.getClassName(), n.getFullyQualifiedName());

@@ -9,6 +9,7 @@ import dev.langchain4j.model.openai.OpenAiChatModelName;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -54,6 +55,13 @@ public class CrossModelJudge {
 
     private static final int MAX_OUTPUT_TOKENS = 512;
 
+    // Keys resolved from env vars, system properties, OR application.properties
+    @Value("${ANTHROPIC_API_KEY:${anthropic.api.key:}}")
+    private String anthropicApiKey;
+
+    @Value("${OPENAI_API_KEY:${openai.api.key:}}")
+    private String openaiApiKey;
+
     private ChatLanguageModel claudeModel;  // judges GPT-4o output
     private ChatLanguageModel gpt4oModel;   // judges Claude output
 
@@ -67,8 +75,8 @@ public class CrossModelJudge {
 
     @PostConstruct
     void init() {
-        String anthropicKey = System.getenv("ANTHROPIC_API_KEY");
-        String openaiKey    = System.getenv("OPENAI_API_KEY");
+        String anthropicKey = (anthropicApiKey != null && !anthropicApiKey.isBlank()) ? anthropicApiKey : null;
+        String openaiKey    = (openaiApiKey    != null && !openaiApiKey.isBlank())    ? openaiApiKey    : null;
 
         if (anthropicKey != null && !anthropicKey.isBlank()) {
             claudeModel = AnthropicChatModel.builder()
