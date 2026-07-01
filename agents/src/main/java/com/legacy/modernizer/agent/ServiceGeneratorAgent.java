@@ -178,6 +178,9 @@ public class ServiceGeneratorAgent {
     @Value("${repair.max-attempts:3}")
     private int maxRepairAttempts;
 
+    @Value("${service-gen.max-method-sigs:30}")
+    private int maxMethodSigs;
+
     public ServiceGeneratorAgent(ChatLanguageModel        chatModel,
                                  AgentTaskRepository      taskRepository,
                                  ArtifactRepository       artifactRepository,
@@ -239,9 +242,12 @@ public class ServiceGeneratorAgent {
             List<String> methodSignatures = (srcDir != null && !isCommons)
                     ? extractMethodSignatures(srcDir, boundary.getClassFqns())
                     : List.of();
+            if (methodSignatures.size() > maxMethodSigs) {
+                methodSignatures = methodSignatures.subList(0, maxMethodSigs);
+            }
             if (!methodSignatures.isEmpty()) {
-                log.info("[service-gen] Extracted {} method signatures from source for {}",
-                        methodSignatures.size(), serviceName);
+                log.info("[service-gen] Using {} method signatures for {} (cap={})",
+                        methodSignatures.size(), serviceName, maxMethodSigs);
             }
             String userPrompt   = isCommons
                     ? buildCommonsUserPrompt(boundary, pkg)
