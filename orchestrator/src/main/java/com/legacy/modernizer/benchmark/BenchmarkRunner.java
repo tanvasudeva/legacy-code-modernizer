@@ -160,7 +160,7 @@ public class BenchmarkRunner {
 
             // Step 2: DDD boundaries
             log.info("[benchmark][{}] Step 2/5 — architect agent", repoName);
-            architectAgent.analyze(jobId, clusterMap);
+            architectAgent.analyze(jobId, clusterMap, analysis.interClusterCalls());
 
             // Step 2b: DD2 — shared library detection (runs after ArchitectAgent, before generation)
             log.info("[benchmark][{}] Step 2b/5 — shared library detection", repoName);
@@ -196,7 +196,7 @@ public class BenchmarkRunner {
                 List<String> ragSnippets = fetchRag(jobId, boundary);
 
                 // 3a. Service code
-                var svcResult = serviceGeneratorAgent.generate(jobId, boundary, ragSnippets);
+                var svcResult = serviceGeneratorAgent.generate(jobId, boundary, ragSnippets, srcDir);
                 totalFiles  += svcResult.files().size();
                 totalTokens += tokenCount(svcResult.task().getTokensUsed());
 

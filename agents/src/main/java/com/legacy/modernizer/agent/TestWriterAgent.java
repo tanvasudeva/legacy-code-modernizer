@@ -103,14 +103,19 @@ public class TestWriterAgent {
                     assertThatThrownBy → NoSuchElementException
                   - @Test create: when(repo.save(any())).thenReturn(sample); verify(repo).save(any())
                   - @Test delete: doNothing().when(repo).deleteById(1L); verify(repo).deleteById(1L)
-            5.  Controller test (@WebMvcTest({Entity}Controller.class)):
-                  - @MockBean {Entity}Service; @Autowired MockMvc mockMvc; @Autowired ObjectMapper objectMapper
-                  - @Test GET / → status 200 + JSON array (use jsonPath("$[0].{firstStringField}"))
-                  - @Test GET /{id} → status 200 + jsonPath on entity field
-                  - @Test POST / → status 200 (stub service.create(any()) → sample entity)
-                  - @Test DELETE /{id} → status 204
-            6.  Use static imports for MockMvcRequestBuilders and MockMvcResultMatchers.
-            7.  All imports must be explicit and complete — zero wildcard imports.
+            5.  Controller test (@ExtendWith(MockitoExtension.class) — NO Spring context, no @WebMvcTest):
+                  - @Mock {Entity}Service mockService; {Entity}Controller controller;
+                  - @BeforeEach: controller = new {Entity}Controller(mockService);
+                  - @Test findAll_returns200(): when(mockService.findAll()).thenReturn(List.of(sample));
+                    ResponseEntity<?> r = controller.findAll(); assertThat(r.getStatusCode().value()).isEqualTo(200);
+                  - @Test findById_found_returns200(): when(mockService.findById(1L)).thenReturn(sample);
+                    assertThat(controller.findById(1L).getStatusCode().value()).isEqualTo(200);
+                  - @Test create_returns200(): when(mockService.create(any())).thenReturn(sample);
+                    assertThat(controller.create(sample).getStatusCode().value()).isEqualTo(200);
+                  - @Test delete_returns204(): doNothing().when(mockService).delete(1L);
+                    assertThat(controller.delete(1L).getStatusCode().value()).isEqualTo(204);
+                  - IMPORTANT: look at the actual controller method signatures to match parameter/return types
+            6.  All imports must be explicit and complete — zero wildcard imports.
             8.  Package declarations must match file paths exactly.
             """;
 
