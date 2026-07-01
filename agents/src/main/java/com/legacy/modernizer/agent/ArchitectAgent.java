@@ -47,7 +47,8 @@ public class ArchitectAgent {
             1. Identify natural BOUNDED CONTEXTS — each service owns its domain data and logic.
             2. Apply UBIQUITOUS LANGUAGE — service names reflect the domain vocabulary.
             3. Ensure HIGH COHESION — every class in a service serves the same domain capability.
-            4. Minimise COUPLING — cross-service dependencies are explicit, not implicit.
+            4. Minimise COUPLING — merge clusters that have many CALLS edges between them into the \
+               same service; cross-service calls should represent true integration points only.
             5. Merge clusters with fewer than 2 domain classes into the nearest semantic service.
 
             Output ONLY valid JSON in this exact schema — no markdown, no explanation, no prose:
@@ -87,11 +88,13 @@ public class ArchitectAgent {
      * Analyses the cluster map, calls the LLM, and persists the resulting
      * {@link ServiceBoundary} rows for the given job.
      *
-     * @param jobId      the migration job this analysis belongs to
-     * @param clusterMap Louvain output: fully-qualified class name → proposed service name
+     * @param jobId              the migration job this analysis belongs to
+     * @param clusterMap         Louvain output: fully-qualified class name → proposed service name
+     * @param interClusterCalls  cross-cluster CALLS edge counts: fromCluster → toCluster → count
      * @return persisted {@link ServiceBoundary} list (one per proposed microservice)
      */
-    public List<ServiceBoundary> analyze(Long jobId, Map<String, String> clusterMap) {
+    public List<ServiceBoundary> analyze(Long jobId, Map<String, String> clusterMap,
+                                         Map<String, Map<String, Integer>> interClusterCalls) {
         log.info("[architect] Analysing {} classes across {} clusters for job {}",
                 clusterMap.size(), new HashSet<>(clusterMap.values()).size(), jobId);
 
@@ -99,7 +102,7 @@ public class ArchitectAgent {
         Map<String, List<String>> grouped = groupByService(clusterMap);
 
         // 2. Build user prompt
-        String userPrompt = buildUserPrompt(grouped);
+        String userPrompt = buildUserPrompt(grouped, interClusterCalls != null ? interClusterCalls : Map.of());
         log.debug("[architect] Prompt:\n{}", userPrompt);
 
         // 3. Call LLM
@@ -133,7 +136,8 @@ public class ArchitectAgent {
         return grouped;
     }
 
-    private String buildUserPrompt(Map<String, List<String>> grouped) {
+    private String buildUserPrompt(Map<String, List<String>> grouped,
+                                   Map<String, Map<String, Integer>> interClusterCalls) {
         StringBuilder sb = new StringBuilder();
         sb.append("Cluster map from Louvain community detection:\n\n");
         grouped.forEach((svc, classes) -> {
@@ -143,6 +147,27 @@ public class ArchitectAgent {
         });
         int total = grouped.values().stream().mapToInt(List::size).sum();
         sb.append("Total: ").append(total).append(" classes across ").append(grouped.size()).append(" clusters.\n\n");
+
+        // Append cross-cluster call frequencies (sorted descending) so the LLM can
+        // prefer merging clusters that heavily call each other into the same service.
+        if (!interClusterCalls.isEmpty()) {
+            record Edge(String from, String to, int count) {}
+            List<Edge> edges = new ArrayList<>();
+            interClusterCalls.forEach((from, targets) ->
+                    targets.forEach((to, count) -> edges.add(new Edge(from, to, count))));
+            edges.sort((a, b) -> Integer.compare(b.count(), a.count()));
+
+            sb.append("Cross-cluster CALLS frequency (higher = more tightly coupled):\n");
+            sb.append("RULE: clusters with many cross-calls SHOULD be in the SAME service to minimise inter-service coupling.\n");
+            int limit = Math.min(edges.size(), 20);
+            for (int i = 0; i < limit; i++) {
+                Edge e = edges.get(i);
+                sb.append("  ").append(e.from()).append(" → ").append(e.to())
+                  .append(" : ").append(e.count()).append(" calls\n");
+            }
+            sb.append("\n");
+        }
+
         sb.append("Produce the microservice decomposition JSON.");
         return sb.toString();
     }

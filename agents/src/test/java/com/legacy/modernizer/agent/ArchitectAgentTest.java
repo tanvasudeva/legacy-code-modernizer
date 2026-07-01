@@ -122,51 +122,51 @@ class ArchitectAgentTest {
 
     @Test
     void produces4to7ServiceBoundaries() {
-        List<ServiceBoundary> result = agent.analyze(1L, PETCLINIC_CLUSTER_MAP);
+        List<ServiceBoundary> result = agent.analyze(1L, PETCLINIC_CLUSTER_MAP, Map.of());
         assertTrue(result.size() >= 4 && result.size() <= 7,
                 "Expected 4–7 boundaries, got " + result.size());
     }
 
     @Test
     void allBoundariesHaveNonBlankServiceName() {
-        agent.analyze(1L, PETCLINIC_CLUSTER_MAP).forEach(b ->
+        agent.analyze(1L, PETCLINIC_CLUSTER_MAP, Map.of()).forEach(b ->
                 assertFalse(b.getServiceName() == null || b.getServiceName().isBlank()));
     }
 
     @Test
     void allBoundariesHaveRationale() {
-        agent.analyze(1L, PETCLINIC_CLUSTER_MAP).forEach(b ->
+        agent.analyze(1L, PETCLINIC_CLUSTER_MAP, Map.of()).forEach(b ->
                 assertNotNull(b.getRationale(), "Rationale missing for: " + b.getServiceName()));
     }
 
     @Test
     void allBoundariesHaveDomainContext() {
-        agent.analyze(1L, PETCLINIC_CLUSTER_MAP).forEach(b ->
+        agent.analyze(1L, PETCLINIC_CLUSTER_MAP, Map.of()).forEach(b ->
                 assertNotNull(b.getDescription(), "Description missing for: " + b.getServiceName()));
     }
 
     @Test
     void allBoundariesHaveAtLeastOneClass() {
-        agent.analyze(1L, PETCLINIC_CLUSTER_MAP).forEach(b ->
+        agent.analyze(1L, PETCLINIC_CLUSTER_MAP, Map.of()).forEach(b ->
                 assertFalse(b.getClassFqns().isEmpty(), b.getServiceName() + " has no classes"));
     }
 
     @Test
     void eachBoundaryPersistedToRepository() {
-        List<ServiceBoundary> result = agent.analyze(1L, PETCLINIC_CLUSTER_MAP);
+        List<ServiceBoundary> result = agent.analyze(1L, PETCLINIC_CLUSTER_MAP, Map.of());
         verify(repository, times(result.size())).save(any(ServiceBoundary.class));
     }
 
     @Test
     void serviceNamesAreKebabCase() {
-        agent.analyze(1L, PETCLINIC_CLUSTER_MAP).forEach(b ->
+        agent.analyze(1L, PETCLINIC_CLUSTER_MAP, Map.of()).forEach(b ->
                 assertTrue(b.getServiceName().matches("[a-z][a-z0-9-]+"),
                         "Not kebab-case: " + b.getServiceName()));
     }
 
     @Test
     void knownServiceNamesPresent() {
-        List<String> names = agent.analyze(1L, PETCLINIC_CLUSTER_MAP)
+        List<String> names = agent.analyze(1L, PETCLINIC_CLUSTER_MAP, Map.of())
                 .stream().map(ServiceBoundary::getServiceName).toList();
         assertTrue(names.contains("owner-service"), "owner-service expected");
         assertTrue(names.contains("vet-service"),   "vet-service expected");

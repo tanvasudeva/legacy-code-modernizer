@@ -78,7 +78,7 @@ class ArchitectAgentIntegrationTest {
 
     @Test @Order(1)
     void produces4to7ServiceBoundaries() {
-        List<ServiceBoundary> boundaries = architectAgent.analyze(jobId, PETCLINIC_CLUSTER_MAP);
+        List<ServiceBoundary> boundaries = architectAgent.analyze(jobId, PETCLINIC_CLUSTER_MAP, Map.of());
         int count = boundaries.size();
         assertTrue(count >= 4 && count <= 7,
                 "Expected 4–7 service boundaries, got " + count);

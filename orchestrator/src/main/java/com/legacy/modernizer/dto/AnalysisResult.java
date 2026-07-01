@@ -9,5 +9,6 @@ public record AnalysisResult(
         int packageNodes,
         int relationships,
         int clusterCount,
-        Map<String, String> clusterMap
+        Map<String, String> clusterMap,
+        Map<String, Map<String, Integer>> interClusterCalls
 ) {}
