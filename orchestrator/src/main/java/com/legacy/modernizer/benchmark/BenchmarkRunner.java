@@ -15,6 +15,7 @@ import com.legacy.modernizer.model.JobStatus;
 import com.legacy.modernizer.model.MigrationJob;
 import com.legacy.modernizer.model.ServiceBoundary;
 import com.legacy.modernizer.rag.CodeChunk;
+import com.legacy.modernizer.rag.RagIndexService;
 import com.legacy.modernizer.rag.RagRetriever;
 import com.legacy.modernizer.repository.ArtifactRepository;
 import com.legacy.modernizer.repository.MigrationJobRepository;
@@ -74,6 +75,7 @@ public class BenchmarkRunner {
     private final TestWriterAgent           testWriterAgent;
     private final DocGenAgent               docGenAgent;
     private final BundleAssembler           bundleAssembler;
+    private final RagIndexService            ragIndexService;
     private final RagRetriever              ragRetriever;
     private final ArtifactRepository        artifactRepository;
     private final ServiceBoundaryRepository boundaryRepository;
@@ -89,6 +91,7 @@ public class BenchmarkRunner {
                            TestWriterAgent testWriterAgent,
                            DocGenAgent docGenAgent,
                            BundleAssembler bundleAssembler,
+                           RagIndexService ragIndexService,
                            RagRetriever ragRetriever,
                            ArtifactRepository artifactRepository,
                            ServiceBoundaryRepository boundaryRepository,
@@ -100,6 +103,7 @@ public class BenchmarkRunner {
         this.testWriterAgent       = testWriterAgent;
         this.docGenAgent           = docGenAgent;
         this.bundleAssembler       = bundleAssembler;
+        this.ragIndexService       = ragIndexService;
         this.ragRetriever          = ragRetriever;
         this.artifactRepository    = artifactRepository;
         this.boundaryRepository    = boundaryRepository;
@@ -144,6 +148,15 @@ public class BenchmarkRunner {
             Map<String, String> clusterMap = analysis.clusterMap();
             log.info("[benchmark][{}] {} classes, {} clusters",
                     repoName, analysis.classNodes(), analysis.clusterCount());
+
+            // Step 1b: RAG indexing (must happen before generation so snippets are available)
+            log.info("[benchmark][{}] Step 1b/5 — RAG indexing", repoName);
+            try {
+                int chunks = ragIndexService.index(jobId, srcDir.toAbsolutePath().toString());
+                log.info("[benchmark][{}] RAG indexed {} chunks", repoName, chunks);
+            } catch (Exception e) {
+                log.warn("[benchmark][{}] RAG indexing failed (will proceed without RAG): {}", repoName, e.getMessage());
+            }
 
             // Step 2: DDD boundaries
             log.info("[benchmark][{}] Step 2/5 — architect agent", repoName);

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Prism.js theme (VS Code Dark+) */
 code[class*="language-"],
