@@ -1,0 +1,46 @@
+name: Codacy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codacy-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write  # needed to upload SARIF to GitHub Code Scanning
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Codacy Analysis CLI
+        uses: codacy/codacy-analysis-cli-action@v4
+        continue-on-error: true
+        with:
+          # Optional: upload results to Codacy dashboard (requires CODACY_PROJECT_TOKEN secret)
+          # To enable: go to codacy.com → add this repo → copy project token →
+          # add it as a GitHub secret named CODACY_PROJECT_TOKEN
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          upload: true
+          format: sarif
+          output: codacy.sarif
+          gh-code-scanning-compat: true
+          max-allowed-issues: 2147483647
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: ${{ hashFiles('codacy.sarif') != '' }}
+        continue-on-error: true
+        with:
+          sarif_file: codacy.sarif
