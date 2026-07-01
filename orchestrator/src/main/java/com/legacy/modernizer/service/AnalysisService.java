@@ -69,6 +69,10 @@ public class AnalysisService {
             log.info("[job={}] Running Louvain …", jobId);
             Map<String, String> clusterMap = runLouvain(adjacencyFile, clusterMapFile);
 
+            log.info("[job={}] Computing inter-cluster call edges …", jobId);
+            Map<String, Map<String, Integer>> interClusterCalls =
+                    graphIngester.computeInterClusterEdges(clusterMap);
+
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("clusterMap", clusterMap);
             metadata.put("stats", Map.of(
@@ -84,7 +88,8 @@ public class AnalysisService {
 
             return new AnalysisResult(jobId, "DONE",
                     stats.classNodes(), stats.packageNodes(), stats.relationships(),
-                    (int) clusterMap.values().stream().distinct().count(), clusterMap);
+                    (int) clusterMap.values().stream().distinct().count(), clusterMap,
+                    interClusterCalls);
 
         } catch (Exception e) {
             log.error("[job={}] Analysis failed: {}", jobId, e.getMessage(), e);
