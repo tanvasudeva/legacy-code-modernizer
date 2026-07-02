@@ -5,6 +5,7 @@ import dev.langchain4j.model.chat.ChatLanguageModel;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -37,19 +38,21 @@ public class SinglePromptClaude extends SinglePromptBaseline {
     private static final int CONTEXT_TOKENS    = 190_000;
     private static final int MAX_OUTPUT_TOKENS = 8_192;
 
+    @Value("${ANTHROPIC_API_KEY:${anthropic.api.key:}}")
+    private String apiKey;
+
     private ChatLanguageModel claudeModel;
     private boolean           available;
 
     @PostConstruct
     void init() {
-        String apiKey = System.getenv("ANTHROPIC_API_KEY");
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("[claude-baseline] ANTHROPIC_API_KEY not set — baseline will return skipped results");
             available = false;
             return;
         }
         claudeModel = AnthropicChatModel.builder()
-                .apiKey(apiKey)
+                .apiKey(apiKey.strip())
                 .modelName(MODEL_ID)
                 .maxTokens(MAX_OUTPUT_TOKENS)
                 .temperature(0.0)
