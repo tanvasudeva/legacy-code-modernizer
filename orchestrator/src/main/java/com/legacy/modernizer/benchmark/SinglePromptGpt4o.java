@@ -6,6 +6,7 @@ import dev.langchain4j.model.openai.OpenAiChatModelName;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -33,19 +34,21 @@ public class SinglePromptGpt4o extends SinglePromptBaseline {
     /** Max output tokens for the service-boundary JSON. */
     private static final int MAX_OUTPUT_TOKENS = 4_096;
 
+    @Value("${OPENAI_API_KEY:${openai.api.key:}}")
+    private String apiKey;
+
     private ChatLanguageModel gpt4oModel;
     private boolean           available;
 
     @PostConstruct
     void init() {
-        String apiKey = System.getenv("OPENAI_API_KEY");
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("[gpt4o-baseline] OPENAI_API_KEY not set — baseline will return skipped results");
             available = false;
             return;
         }
         gpt4oModel = OpenAiChatModel.builder()
-                .apiKey(apiKey)
+                .apiKey(apiKey.strip())
                 .modelName(OpenAiChatModelName.GPT_4_O)
                 .maxTokens(MAX_OUTPUT_TOKENS)
                 .temperature(0.0)
