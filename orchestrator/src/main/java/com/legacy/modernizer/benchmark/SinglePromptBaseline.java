@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -66,6 +67,24 @@ public abstract class SinglePromptBaseline {
             </source>
             """;
 
+    // ─── Code-generation prompt (Step 2 — one call per service) ─────────────
+
+    private static final String CODE_SYSTEM_PROMPT = """
+            You are a Java developer. Generate a complete Spring Boot 3 microservice.
+
+            For each class output a separate ```java code block. \
+            Every block must contain exactly one public class or interface \
+            with the correct package declaration.
+
+            RULES:
+            1. Java 21, Spring Boot 3, Jakarta EE (jakarta.persistence.*, jakarta.validation.*)
+            2. Annotate entities with @Entity and @Table; repositories extend JpaRepository<T, Long>
+            3. Service class: @Service, @Transactional on write methods, constructor injection
+            4. Controller: @RestController, @RequestMapping, standard CRUD endpoints
+            5. Implement ALL methods implied by the class names — do not leave stubs
+            6. No explanatory prose outside the code blocks
+            """;
+
     // ─── Template method ─────────────────────────────────────────────────────
 
     /** The LLM to call — provided by each concrete subclass. */
@@ -109,61 +128,72 @@ public abstract class SinglePromptBaseline {
             return failed(repoName, msg, sources, 0, System.currentTimeMillis() - start);
         }
 
-        // 2. Call LLM
+        // 2. Call LLM — Step 1: decomposition plan
         String userPrompt = USER_PROMPT_TEMPLATE.formatted(sources.concatenated());
-        log.info("[{}][{}] Calling model — {} chars, {} files",
+        log.info("[{}][{}] Step 1 — decomposition plan ({} chars, {} files)",
                 systemId(), repoName, sources.charsSent(), sources.filesIncluded());
 
-        String  rawResponse;
-        Integer tokensUsed;
+        String  planResponse;
+        int     totalTokens = 0;
         try {
             Response<AiMessage> resp = model().generate(
                     List.of(SystemMessage.from(SYSTEM_PROMPT), UserMessage.from(userPrompt)));
-            rawResponse = resp.content().text();
-            tokensUsed  = resp.tokenUsage() != null ? resp.tokenUsage().totalTokenCount() : null;
-            log.info("[{}][{}] Response {} chars, {} tokens",
-                    systemId(), repoName, rawResponse.length(), tokensUsed);
+            planResponse = resp.content().text();
+            if (resp.tokenUsage() != null) totalTokens += resp.tokenUsage().totalTokenCount();
+            log.info("[{}][{}] Plan response: {} chars", systemId(), repoName, planResponse.length());
         } catch (Exception e) {
-            log.error("[{}][{}] LLM call failed: {}", systemId(), repoName, e.getMessage(), e);
+            log.error("[{}][{}] Plan call failed: {}", systemId(), repoName, e.getMessage(), e);
             return failed(repoName, e.getMessage(), sources, 0, System.currentTimeMillis() - start);
         }
 
-        // 3. Parse JSON response
-        int serviceCount = countServices(rawResponse);
+        // 3. Parse plan and count services
+        int serviceCount = countServices(planResponse);
         log.info("[{}][{}] Parsed {} service boundaries", systemId(), repoName, serviceCount);
 
-        // 4. Save to results/
+        // 4. Step 2: generate code per service (no RAG, no repair — fair baseline comparison)
+        //    Appended to response_raw.txt so the evaluator's BaselineCodeExtractor picks it up.
+        StringBuilder codeOutput = new StringBuilder(planResponse);
+        if (serviceCount > 0) {
+            log.info("[{}][{}] Step 2 — generating code for {} services", systemId(), repoName, serviceCount);
+            int codeTokens = generateServiceCode(planResponse, codeOutput);
+            totalTokens += codeTokens;
+            log.info("[{}][{}] Code generation complete — {} additional tokens", systemId(), repoName, codeTokens);
+        }
+
+        String rawResponse = codeOutput.toString();
+
+        // 5. Save to results/
         long elapsed = System.currentTimeMillis() - start;
         try {
-            saveOutputs(resultsRoot, repoName, sources, rawResponse, serviceCount,
-                    tokensUsed, elapsed);
+            saveOutputs(resultsRoot, repoName, sources, planResponse, rawResponse,
+                    serviceCount, totalTokens > 0 ? totalTokens : null, elapsed);
         } catch (IOException e) {
             log.warn("[{}][{}] Could not save outputs: {}", systemId(), repoName, e.getMessage());
         }
 
-        log.info("[{}] ✓ {} done in {}s — {} services",
-                repoName, systemId(), elapsed / 1000, serviceCount);
+        log.info("[{}] ✓ {} done in {}s — {} services, {} tokens",
+                repoName, systemId(), elapsed / 1000, serviceCount, totalTokens);
 
         return new BaselineResult(repoName, systemId(), modelId(), true,
                 rawResponse, sources.filesIncluded(), sources.filesSkipped(),
-                sources.charsSent(), tokensUsed, elapsed, serviceCount,
-                null, LocalDateTime.now());
+                sources.charsSent(), totalTokens > 0 ? totalTokens : null,
+                elapsed, serviceCount, null, LocalDateTime.now());
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private void saveOutputs(Path resultsRoot, String repoName,
                              SourceCollector.CollectedSources sources,
-                             String rawResponse, int serviceCount,
-                             Integer tokensUsed, long elapsedMs) throws IOException {
+                             String planResponse, String fullRawResponse,
+                             int serviceCount, Integer tokensUsed, long elapsedMs) throws IOException {
         Path outDir = resultsRoot.resolve(repoName).resolve(systemId());
         Files.createDirectories(outDir);
 
-        // response_raw.txt
-        Files.writeString(outDir.resolve("response_raw.txt"), rawResponse);
+        // response_raw.txt — plan + all generated code blocks (read by BaselineCodeExtractor)
+        Files.writeString(outDir.resolve("response_raw.txt"), fullRawResponse);
 
-        // response.json — best-effort parsed array
-        String responseJson = extractJson(rawResponse);
+        // response.json — parsed service boundary plan only
+        String responseJson = extractJson(planResponse);
         Files.writeString(outDir.resolve("response.json"), responseJson);
 
         // metadata.json
@@ -184,6 +214,55 @@ public abstract class SinglePromptBaseline {
         );
         om.writerWithDefaultPrettyPrinter()
           .writeValue(outDir.resolve("metadata.json").toFile(), meta);
+    }
+
+    /**
+     * For each service in the plan, makes one code-generation LLM call (no RAG, no repair)
+     * and appends the response to {@code out}. Returns total tokens used across all calls.
+     */
+    private int generateServiceCode(String planResponse, StringBuilder out) {
+        String json = extractJson(planResponse);
+        int tokens = 0;
+        try {
+            JsonNode services = new ObjectMapper().readTree(json);
+            if (!services.isArray()) return 0;
+            for (JsonNode svc : services) {
+                String name = svc.path("serviceName").asText("unknown-service");
+                String desc = svc.path("description").asText("");
+                List<String> fqns = new ArrayList<>();
+                svc.path("classFqns").forEach(n -> fqns.add(n.asText()));
+
+                String userPrompt = buildCodeUserPrompt(name, desc, fqns);
+                log.info("[{}] Generating code for {}", systemId(), name);
+                try {
+                    Response<AiMessage> resp = model().generate(List.of(
+                            SystemMessage.from(CODE_SYSTEM_PROMPT),
+                            UserMessage.from(userPrompt)));
+                    out.append("\n\n// ═══ ").append(name).append(" ═══\n")
+                       .append(resp.content().text());
+                    if (resp.tokenUsage() != null) tokens += resp.tokenUsage().totalTokenCount();
+                } catch (Exception e) {
+                    log.warn("[{}] Code gen failed for {}: {}", systemId(), name, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[{}] Could not parse plan for code generation: {}", systemId(), e.getMessage());
+        }
+        return tokens;
+    }
+
+    private static String buildCodeUserPrompt(String serviceName, String description,
+                                              List<String> classFqns) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Generate a Spring Boot 3 microservice for: ").append(serviceName).append("\n\n");
+        if (!description.isBlank()) {
+            sb.append("Domain description: ").append(description).append("\n\n");
+        }
+        sb.append("Classes to implement:\n");
+        classFqns.forEach(c -> sb.append("  - ").append(c).append("\n"));
+        sb.append("\nGenerate complete, compilable code for every class listed. ")
+          .append("Each file in its own ```java code block with the correct package declaration.");
+        return sb.toString();
     }
 
     /** Strips code fences then returns the JSON array, or {@code []} on failure. */
