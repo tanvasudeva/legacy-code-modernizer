@@ -66,7 +66,6 @@ import java.util.Map;
 public class BenchmarkRunner {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkRunner.class);
-    private static final int RAG_TOP_K = 5;
 
     private final AnalysisService           analysisService;
     private final ArchitectAgent            architectAgent;
@@ -83,6 +82,12 @@ public class BenchmarkRunner {
 
     @Value("${benchmark.results.dir:results}")
     private String resultsDirProp;
+
+    @Value("${benchmark.rag-top-k:5}")
+    private int ragTopK;
+
+    @Value("${benchmark.skip-docs:false}")
+    private boolean skipDocs;
 
     public BenchmarkRunner(AnalysisService analysisService,
                            ArchitectAgent architectAgent,
@@ -193,7 +198,7 @@ public class BenchmarkRunner {
                 serviceNames.add(svcName);
                 log.info("[benchmark][{}] Step 3/5 — generating {}", repoName, svcName);
 
-                List<String> ragSnippets = fetchRag(jobId, boundary);
+                List<String> ragSnippets = fetchRag(jobId, boundary, ragTopK);
 
                 // 3a. Service code
                 var svcResult = serviceGeneratorAgent.generate(jobId, boundary, ragSnippets, srcDir);
@@ -221,15 +226,17 @@ public class BenchmarkRunner {
                         totalFiles  += testResult.files().size();
                         totalTokens += tokenCount(testResult.task().getTokensUsed());
 
-                        // 3c. Docs
-                        var docResult = docGenAgent.generate(
-                                jobId, boundary, pkg, entityName,
-                                findContent(svcArtifacts, "Controller.java"),
-                                findContent(svcArtifacts, "Service.java"),
-                                findContent(svcArtifacts, "entity/"),
-                                ragSnippets);
-                        totalFiles  += docResult.files().size();
-                        totalTokens += tokenCount(docResult.task().getTokensUsed());
+                        // 3c. Docs — skipped in lite mode (contributes to no eval metric)
+                        if (!skipDocs) {
+                            var docResult = docGenAgent.generate(
+                                    jobId, boundary, pkg, entityName,
+                                    findContent(svcArtifacts, "Controller.java"),
+                                    findContent(svcArtifacts, "Service.java"),
+                                    findContent(svcArtifacts, "entity/"),
+                                    ragSnippets);
+                            totalFiles  += docResult.files().size();
+                            totalTokens += tokenCount(docResult.task().getTokensUsed());
+                        }
 
                     } catch (Exception e) {
                         log.warn("[benchmark][{}] Test/doc gen failed for {}: {}",
@@ -314,12 +321,12 @@ public class BenchmarkRunner {
     // Helpers
     // -------------------------------------------------------------------------
 
-    private List<String> fetchRag(Long jobId, ServiceBoundary boundary) {
+    private List<String> fetchRag(Long jobId, ServiceBoundary boundary, int topK) {
         String query = boundary.getDescription() != null
                 ? boundary.getDescription()
                 : boundary.getServiceName() + " domain entity";
         try {
-            return ragRetriever.retrieve(jobId, query, RAG_TOP_K)
+            return ragRetriever.retrieve(jobId, query, topK)
                     .stream().map(CodeChunk::body)
                     .filter(b -> b != null && !b.isBlank())
                     .toList();

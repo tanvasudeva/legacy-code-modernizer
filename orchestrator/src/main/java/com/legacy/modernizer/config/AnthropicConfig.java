@@ -25,16 +25,18 @@ public class AnthropicConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicConfig.class);
 
-    @Value("${anthropic.model:claude-sonnet-4-6}")
+    @Value("${anthropic.model:claude-haiku-4-5-20251001}")
     private String model;
 
-    @Value("${anthropic.max-tokens:4096}")
+    @Value("${anthropic.max-tokens:8192}")
     private int maxTokens;
+
+    @Value("${ANTHROPIC_API_KEY:${anthropic.api.key:}}")
+    private String apiKey;
 
     @Bean
     @Primary
     public ChatLanguageModel anthropicChatModel() {
-        String apiKey = System.getenv("ANTHROPIC_API_KEY");
         log.info("Anthropic ChatLanguageModel active — model={}", model);
         return AnthropicChatModel.builder()
                 .apiKey(apiKey)
