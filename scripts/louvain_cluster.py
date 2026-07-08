@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Phase 1.3 — Louvain community detection for legacy Java codebase modernisation.
+Phase 1.3 — Community detection for legacy Java codebase modernisation.
+
+Supports Louvain (default) and Leiden algorithms — pass --algorithm leiden
+to switch. Both produce the same cluster_map.json output format so the rest
+of the pipeline is unchanged.
 
 Usage
 -----
   python louvain_cluster.py --input adjacency.json --output cluster_map.json
+  python louvain_cluster.py --input adjacency.json --algorithm leiden --no-llm
   python louvain_cluster.py --neo4j bolt://localhost:7687 --output cluster_map.json
-  python louvain_cluster.py --input adjacency.json --no-llm
 """
 
 import argparse
@@ -18,6 +22,15 @@ import community as community_louvain
 import networkx as nx
 import numpy as np
 import requests
+
+# Leiden is an optional dependency — gracefully absent on systems that haven't
+# run `pip install leidenalg python-igraph`.
+try:
+    import leidenalg
+    import igraph as ig
+    _LEIDEN_AVAILABLE = True
+except ImportError:
+    _LEIDEN_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +99,57 @@ def auto_tune_resolution(
     for _ in range(iterations):
         mid = (lo + hi) / 2.0
         partition = run_louvain(G, resolution=mid)
+        n = len(set(partition.values()))
+        if target_min <= n <= target_max:
+            return partition, mid
+        lo, hi = (mid, hi) if n < target_min else (lo, mid)
+        best_partition, best_res = partition, mid
+    return best_partition, best_res
+
+
+# ---------------------------------------------------------------------------
+# Leiden clustering
+# ---------------------------------------------------------------------------
+
+def _to_igraph(G: nx.Graph) -> tuple['ig.Graph', list[str]]:
+    """Convert a weighted networkx Graph to an igraph Graph for leidenalg."""
+    nodes = list(G.nodes())
+    node_idx = {n: i for i, n in enumerate(nodes)}
+    ig_g = ig.Graph(directed=False)
+    ig_g.add_vertices(len(nodes))
+    ig_g.vs["name"] = nodes
+    ig_g.add_edges([(node_idx[u], node_idx[v]) for u, v in G.edges()])
+    ig_g.es["weight"] = [float(G[u][v].get("weight", 1)) for u, v in G.edges()]
+    return ig_g, nodes
+
+
+def run_leiden(G: nx.Graph, resolution: float = 1.0) -> dict[str, int]:
+    """Leiden algorithm using RBConfiguration (modularity family, supports resolution)."""
+    if not _LEIDEN_AVAILABLE:
+        raise RuntimeError(
+            "leidenalg is not installed. Run: pip install leidenalg python-igraph"
+        )
+    ig_g, nodes = _to_igraph(G)
+    part = leidenalg.find_partition(
+        ig_g,
+        leidenalg.RBConfigurationVertexPartition,
+        weights="weight",
+        resolution_parameter=resolution,
+        n_iterations=10,
+        seed=42,
+    )
+    return {nodes[i]: part.membership[i] for i in range(len(nodes))}
+
+
+def auto_tune_resolution_leiden(
+    G: nx.Graph, target_min: int = 4, target_max: int = 7, iterations: int = 12
+) -> tuple[dict[str, int], float]:
+    lo, hi = 0.1, 5.0
+    best_partition = run_leiden(G, resolution=1.0)
+    best_res = 1.0
+    for _ in range(iterations):
+        mid = (lo + hi) / 2.0
+        partition = run_leiden(G, resolution=mid)
         n = len(set(partition.values()))
         if target_min <= n <= target_max:
             return partition, mid
@@ -193,7 +257,7 @@ def validate(partition: dict[str, int], target_min: int = 4, target_max: int = 7
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Louvain community detection")
+    parser = argparse.ArgumentParser(description="Community detection — Louvain or Leiden")
     parser.add_argument("--input",      default="adjacency.json")
     parser.add_argument("--neo4j",      default=None)
     parser.add_argument("--user",       default="neo4j")
@@ -202,8 +266,16 @@ def main() -> int:
     parser.add_argument("--resolution", type=float, default=None)
     parser.add_argument("--no-llm",     action="store_true")
     parser.add_argument("--ollama",     default="http://localhost:11434")
+    parser.add_argument("--algorithm",  choices=["louvain", "leiden"], default="louvain",
+                        help="Community detection algorithm (default: louvain)")
     args = parser.parse_args()
 
+    if args.algorithm == "leiden" and not _LEIDEN_AVAILABLE:
+        print("ERROR: leidenalg is not installed. Run: pip install leidenalg python-igraph",
+              file=sys.stderr)
+        return 1
+
+    # Load graph
     if args.neo4j:
         print(f"Loading graph from Neo4j {args.neo4j} …")
         edges = load_edges_from_neo4j(args.neo4j, args.user, args.password)
@@ -218,13 +290,27 @@ def main() -> int:
         print("ERROR: empty graph", file=sys.stderr)
         return 1
 
-    print("\nRunning Louvain community detection …")
-    if args.resolution is not None:
-        partition = run_louvain(G, resolution=args.resolution)
-        print(f"  resolution={args.resolution:.2f} → {len(set(partition.values()))} clusters")
+    # Run chosen algorithm
+    print(f"\nRunning {args.algorithm.capitalize()} community detection …")
+    res = args.resolution
+    if args.algorithm == "leiden":
+        if res is not None:
+            partition = run_leiden(G, resolution=res)
+            print(f"  resolution={res:.2f} → {len(set(partition.values()))} clusters")
+        else:
+            partition, res = auto_tune_resolution_leiden(G)
+            print(f"  auto-tuned resolution={res:.3f} → {len(set(partition.values()))} clusters")
     else:
-        partition, res = auto_tune_resolution(G)
-        print(f"  auto-tuned resolution={res:.3f} → {len(set(partition.values()))} clusters")
+        if res is not None:
+            partition = run_louvain(G, resolution=res)
+            print(f"  resolution={res:.2f} → {len(set(partition.values()))} clusters")
+        else:
+            partition, res = auto_tune_resolution(G)
+            print(f"  auto-tuned resolution={res:.3f} → {len(set(partition.values()))} clusters")
+
+    # Modularity is computed the same way for both algorithms (networkx Q metric),
+    # enabling a direct apples-to-apples comparison in the report.
+    modularity = community_louvain.modularity(partition, G, weight="weight")
 
     print(f"\nLabelling clusters ({'codellama via Ollama' if not args.no_llm else 'heuristics'}) …")
     cluster_map, _ = build_cluster_map(partition, use_llm=not args.no_llm, ollama_url=args.ollama)
@@ -235,6 +321,15 @@ def main() -> int:
     with open(args.output, "w") as f:
         json.dump(cluster_map, f, indent=2, sort_keys=True)
     print(f"\nCluster map written → {args.output}  ({len(cluster_map)} classes)")
+
+    # Emit a machine-readable stats line that AnalysisService parses from stdout.
+    stats = {
+        "algorithm":    args.algorithm,
+        "modularity":   round(modularity, 4),
+        "clusterCount": len(set(partition.values())),
+        "resolution":   round(res, 4),
+    }
+    print(f"CLUSTERING_STATS:{json.dumps(stats)}")
 
     return 0 if valid else 1
 
