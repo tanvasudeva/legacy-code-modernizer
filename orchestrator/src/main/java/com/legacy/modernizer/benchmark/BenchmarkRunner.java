@@ -119,14 +119,20 @@ public class BenchmarkRunner {
     // Public API
     // -------------------------------------------------------------------------
 
+    /** Runs the full pipeline using the configured default clustering algorithm. */
+    public BenchmarkResult run(BenchmarkSpec spec, Path projectRoot) {
+        return run(spec, projectRoot, null);
+    }
+
     /**
      * Runs the full pipeline for one benchmark repository.
      *
-     * @param spec       the benchmark target (name + source directory)
-     * @param projectRoot absolute path to the LCM project root (for resolving relative src paths)
+     * @param spec            the benchmark target (name + source directory)
+     * @param projectRoot     absolute path to the LCM project root
+     * @param algorithmOverride {@code "louvain"}, {@code "leiden"}, or {@code null} for default
      * @return result record with metrics; {@link BenchmarkResult#errorMessage()} is non-null on failure
      */
-    public BenchmarkResult run(BenchmarkSpec spec, Path projectRoot) {
+    public BenchmarkResult run(BenchmarkSpec spec, Path projectRoot, String algorithmOverride) {
         long start = System.currentTimeMillis();
         String repoName = spec.name();
         log.info("[benchmark] ▶ Starting {} (~{} LOC)", repoName, spec.approxLoc());
@@ -147,9 +153,10 @@ public class BenchmarkRunner {
         log.info("[benchmark] Created job {} for {}", jobId, repoName);
 
         try {
-            // Step 1: Static analysis + Louvain
-            log.info("[benchmark][{}] Step 1/5 — static analysis", repoName);
-            AnalysisResult analysis = analysisService.analyze(jobId);
+            // Step 1: Static analysis + community detection
+            log.info("[benchmark][{}] Step 1/5 — static analysis ({})",
+                    repoName, algorithmOverride != null ? algorithmOverride : "default algorithm");
+            AnalysisResult analysis = analysisService.analyze(jobId, algorithmOverride);
             Map<String, String> clusterMap = analysis.clusterMap();
             log.info("[benchmark][{}] {} classes, {} clusters",
                     repoName, analysis.classNodes(), analysis.clusterCount());
