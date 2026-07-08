@@ -37,6 +37,10 @@ public class AnalysisService {
     @Value("${analysis.louvain.use-llm:false}")
     private boolean useLlm;
 
+    /** Default algorithm — overridable per-run via {@link #analyze(Long, String)}. */
+    @Value("${analysis.clustering.algorithm:louvain}")
+    private String defaultAlgorithm;
+
     public AnalysisService(GraphIngester graphIngester,
                            MigrationJobRepository jobRepository,
                            ObjectMapper objectMapper) {
@@ -45,7 +49,21 @@ public class AnalysisService {
         this.objectMapper  = objectMapper;
     }
 
+    /** Runs analysis with the configured default clustering algorithm. */
     public AnalysisResult analyze(Long jobId) {
+        return analyze(jobId, null);
+    }
+
+    /**
+     * Runs analysis with an explicit algorithm choice.
+     *
+     * @param algorithmOverride {@code "louvain"}, {@code "leiden"}, or {@code null} to use the
+     *                          configured default ({@code analysis.clustering.algorithm}).
+     */
+    public AnalysisResult analyze(Long jobId, String algorithmOverride) {
+        String algorithm = (algorithmOverride != null && !algorithmOverride.isBlank())
+                ? algorithmOverride.toLowerCase() : defaultAlgorithm;
+
         MigrationJob job = jobRepository.findById(jobId)
                 .orElseThrow(() -> new NoSuchElementException("Job not found: " + jobId));
 
@@ -66,15 +84,21 @@ public class AnalysisService {
             Path clusterMapFile = Files.createTempFile("lcm-cmap-" + jobId + "-", ".json");
             Files.writeString(adjacencyFile, adjacencyJson);
 
-            log.info("[job={}] Running Louvain …", jobId);
-            Map<String, String> clusterMap = runLouvain(adjacencyFile, clusterMapFile);
+            log.info("[job={}] Running {} clustering …", jobId, algorithm);
+            ClusteringResult clustering = runClustering(adjacencyFile, clusterMapFile, algorithm);
+            log.info("[job={}] {} → modularity={}, {} clusters",
+                    jobId, clustering.algorithm(), clustering.modularity(), clustering.clusterCount());
 
             log.info("[job={}] Computing inter-cluster call edges …", jobId);
             Map<String, Map<String, Integer>> interClusterCalls =
-                    graphIngester.computeInterClusterEdges(clusterMap);
+                    graphIngester.computeInterClusterEdges(clustering.clusterMap());
 
             Map<String, Object> metadata = new HashMap<>();
-            metadata.put("clusterMap", clusterMap);
+            metadata.put("clusterMap",          clustering.clusterMap());
+            metadata.put("clusteringAlgorithm", clustering.algorithm());
+            metadata.put("modularity",          clustering.modularity());
+            metadata.put("clusterCount",        clustering.clusterCount());
+            metadata.put("resolution",          clustering.resolution());
             metadata.put("stats", Map.of(
                     "classNodes",    stats.classNodes(),
                     "packageNodes",  stats.packageNodes(),
@@ -88,8 +112,8 @@ public class AnalysisService {
 
             return new AnalysisResult(jobId, "DONE",
                     stats.classNodes(), stats.packageNodes(), stats.relationships(),
-                    (int) clusterMap.values().stream().distinct().count(), clusterMap,
-                    interClusterCalls);
+                    (int) clustering.clusterMap().values().stream().distinct().count(),
+                    clustering.clusterMap(), interClusterCalls);
 
         } catch (Exception e) {
             log.error("[job={}] Analysis failed: {}", jobId, e.getMessage(), e);
@@ -99,13 +123,27 @@ public class AnalysisService {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------------------------
+
+    private record ClusteringResult(
+            Map<String, String> clusterMap,
+            String algorithm,
+            double modularity,
+            int    clusterCount,
+            double resolution
+    ) {}
+
     @SuppressWarnings("unchecked")
-    private Map<String, String> runLouvain(Path adjacencyFile, Path clusterMapFile) throws Exception {
+    private ClusteringResult runClustering(Path adjacencyFile, Path clusterMapFile,
+                                           String algorithm) throws Exception {
         Path script = Path.of(scriptsDir).toAbsolutePath().normalize().resolve("louvain_cluster.py");
         List<String> cmd = new ArrayList<>(List.of(
                 pythonExec, script.toString(),
-                "--input",  adjacencyFile.toAbsolutePath().toString(),
-                "--output", clusterMapFile.toAbsolutePath().toString()));
+                "--input",     adjacencyFile.toAbsolutePath().toString(),
+                "--output",    clusterMapFile.toAbsolutePath().toString(),
+                "--algorithm", algorithm));
         if (!useLlm) cmd.add("--no-llm");
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
@@ -117,6 +155,26 @@ public class AnalysisService {
         if (exitCode != 0)
             throw new RuntimeException("louvain_cluster.py exited " + exitCode + ":\n" + output);
 
-        return objectMapper.readValue(clusterMapFile.toFile(), Map.class);
+        // Parse the CLUSTERING_STATS line emitted by the script
+        double modularity   = 0.0;
+        int    clusterCount = 0;
+        double resolution   = 1.0;
+        for (String line : output.split("\n")) {
+            if (line.startsWith("CLUSTERING_STATS:")) {
+                try {
+                    Map<String, Object> s = objectMapper.readValue(
+                            line.substring("CLUSTERING_STATS:".length()), Map.class);
+                    modularity   = ((Number) s.getOrDefault("modularity",   0.0)).doubleValue();
+                    clusterCount = ((Number) s.getOrDefault("clusterCount", 0)).intValue();
+                    resolution   = ((Number) s.getOrDefault("resolution",   1.0)).doubleValue();
+                } catch (Exception ex) {
+                    log.warn("[clustering] Could not parse CLUSTERING_STATS: {}", ex.getMessage());
+                }
+                break;
+            }
+        }
+
+        Map<String, String> clusterMap = objectMapper.readValue(clusterMapFile.toFile(), Map.class);
+        return new ClusteringResult(clusterMap, algorithm, modularity, clusterCount, resolution);
     }
 }
