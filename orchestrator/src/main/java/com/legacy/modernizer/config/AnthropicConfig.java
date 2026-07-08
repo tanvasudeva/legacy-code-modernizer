@@ -20,7 +20,10 @@ import java.time.Duration;
  * as the default ChatLanguageModel.
  */
 @Configuration
-@ConditionalOnExpression("T(java.lang.System).getenv('ANTHROPIC_API_KEY') != null and T(java.lang.System).getenv('GEMINI_API_KEY') == null")
+@ConditionalOnExpression(
+    "'${ANTHROPIC_API_KEY:${anthropic.api.key:}}'.length() > 0 " +
+    "and '${GEMINI_API_KEY:}'.length() == 0"
+)
 public class AnthropicConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicConfig.class);
