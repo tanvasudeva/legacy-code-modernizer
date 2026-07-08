@@ -5,6 +5,10 @@ numpy>=1.24.0
 requests>=2.28.0
 neo4j>=5.0.0
 
+# Leiden clustering (Phase 1 — comparison algorithm)
+leidenalg>=0.10.2
+python-igraph>=0.10.0
+
 # RAG indexing (Phase 2.5)
 javalang>=0.13.0
 transformers>=4.35.0

@@ -71,14 +71,25 @@ public class CompilationMetric {
             byService.computeIfAbsent(svc, k -> new ArrayList<>()).add(a);
         }
 
+        // Install commons-style services first so dependent services can resolve them
+        List<String> commonsFirst = byService.keySet().stream()
+                .filter(s -> s.endsWith("-commons")).toList();
+        List<String> rest = byService.keySet().stream()
+                .filter(s -> !s.endsWith("-commons")).toList();
+
         int ok    = 0;
         int total = byService.size();
         Map<String, Object> serviceDetails = new LinkedHashMap<>();
 
-        for (Map.Entry<String, List<Artifact>> entry : byService.entrySet()) {
-            String           svc    = entry.getKey();
-            List<Artifact>   files  = entry.getValue();
-            ServiceCompileResult r  = compileService(svc, files);
+        for (String svc : commonsFirst) {
+            ServiceCompileResult r = installService(svc, byService.get(svc));
+            serviceDetails.put(svc, Map.of("success", r.success(), "exitCode", r.exitCode()));
+            if (r.success()) ok++;
+            log.info("[compilation] {} (commons/install) → {}", svc, r.success() ? "OK" : "FAIL (exit " + r.exitCode() + ")");
+        }
+
+        for (String svc : rest) {
+            ServiceCompileResult r = compileService(svc, byService.get(svc));
             serviceDetails.put(svc, Map.of("success", r.success(), "exitCode", r.exitCode()));
             if (r.success()) ok++;
             log.info("[compilation] {} → {}", svc, r.success() ? "OK" : "FAIL (exit " + r.exitCode() + ")");
@@ -118,6 +129,44 @@ public class CompilationMetric {
     // ─── Internal helpers ─────────────────────────────────────────────────────
 
     private record ServiceCompileResult(boolean success, int exitCode) {}
+
+    /** Runs {@code mvn install -DskipTests} so the JAR lands in the local repo for dependents. */
+    private ServiceCompileResult installService(String serviceName, List<Artifact> files) {
+        Path tempDir = null;
+        try {
+            tempDir = Files.createTempDirectory("lcm-install-" + serviceName + "-");
+            for (Artifact a : files) {
+                Path target = tempDir.resolve(a.getFilePath()).normalize();
+                if (!target.startsWith(tempDir))
+                    throw new SecurityException("Path traversal: " + a.getFilePath());
+                Files.createDirectories(target.getParent());
+                Files.writeString(target, a.getContent());
+            }
+            if (!Files.exists(tempDir.resolve("pom.xml"))) {
+                log.warn("[compilation] No pom.xml for commons service {} — skipping install", serviceName);
+                return new ServiceCompileResult(false, -1);
+            }
+            String mvn = System.getProperty("os.name", "").toLowerCase().contains("win")
+                    ? "mvn.cmd" : "mvn";
+            ProcessBuilder pb = new ProcessBuilder(
+                    mvn, "install", "-DskipTests", "-q", "--no-transfer-progress")
+                    .directory(tempDir.toFile())
+                    .redirectErrorStream(true);
+            Process proc   = pb.start();
+            String  output = new String(proc.getInputStream().readAllBytes());
+            int     exit   = proc.waitFor();
+            if (exit != 0) log.debug("[compilation] install {} failed:\n{}", serviceName, output);
+            return new ServiceCompileResult(exit == 0, exit);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new ServiceCompileResult(false, -99);
+        } catch (Exception e) {
+            log.warn("[compilation] Error installing {}: {}", serviceName, e.getMessage());
+            return new ServiceCompileResult(false, -1);
+        } finally {
+            deleteTree(tempDir);
+        }
+    }
 
     private ServiceCompileResult compileService(String serviceName, List<Artifact> files) {
         Path tempDir = null;

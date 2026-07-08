@@ -102,7 +102,8 @@ public class ServiceGeneratorAgent {
 
             MANDATORY RULES — violation causes compilation failure:
             1.  Java 21, Spring Boot 3.2.5; use jakarta.* (NOT javax.*) throughout.
-            2.  groupId = com.modernized; artifactId = {service-name}.
+            2.  groupId = com.modernized; artifactId = {service-name}; version = 1.0.0-SNAPSHOT. \
+                These three values are EXACT — do not invent alternatives.
             3.  Package root: com.modernized.{pkg}  (all kebab/hyphens removed, lowercase).
             4.  pom.xml MUST include: spring-boot-starter-web, spring-boot-starter-data-jpa, \
                 postgresql (runtime scope), lombok (optional scope).
@@ -121,6 +122,11 @@ public class ServiceGeneratorAgent {
             10. ALL imports must be explicit — zero wildcard imports.
             11. Do NOT include spring.datasource properties in Application.java. \
                 The service is configured externally.
+            12. If this service extends or uses classes from a shared commons module, add EXACTLY \
+                this dependency (do NOT invent a different groupId or version): \
+                <dependency><groupId>com.modernized</groupId> \
+                <artifactId>spring-petclinic-commons</artifactId> \
+                <version>1.0.0-SNAPSHOT</version></dependency>
             """;
 
     /** DD2 — system prompt for generating the shared commons library module. */
@@ -149,10 +155,11 @@ public class ServiceGeneratorAgent {
 
             MANDATORY RULES — violation causes compilation failure:
             1.  Java 21; use jakarta.* (NOT javax.*) throughout.
-            2.  groupId = com.modernized; artifactId = {service-name}; packaging = jar.
+            2.  groupId = com.modernized; artifactId = {service-name}; version = 1.0.0-SNAPSHOT; packaging = jar. \
+                These four values are EXACT — do not invent alternatives.
             3.  Package root: com.modernized.{pkg}  (all kebab/hyphens removed, lowercase).
             4.  pom.xml: plain Java library — NO spring-boot-starter-parent, NO spring-boot-maven-plugin. \
-                Use <groupId>com.modernized</groupId> directly as parent-less POM. \
+                Use <groupId>com.modernized</groupId> as this module's groupId directly (no parent element). \
                 Include only: lombok (optional scope), jakarta.persistence-api (provided scope). \
                 Set <java.version>21</java.version>.
             5.  Generate one Java class per shared class listed. Each class should be a \

@@ -518,3 +518,49 @@ legacy-code-modernizer/
 **Why LCOM4 and coupling (DD4)?** Method-name overlap (API completeness) is a weak proxy that a reviewer would dismiss. LCOM4 and inter-service coupling are standard metrics in the software engineering literature — using them makes the evaluation publishable and lets us claim "our decomposition produces *lower coupling and higher cohesion* than baselines", not just "it compiles more often."
 
 **Why cross-model judging?** A model judging its own output has a systematic self-preference bias. Routing Claude-generated output to GPT-4o and vice versa removes that bias and attributes the judge model in `eval_metrics.judge_model` for full reproducibility.
+
+---
+
+## Benchmark Run Results — spring-petclinic
+
+### Pipeline Comparison (from logs)
+
+| | Job 27 — Ollama (qwen2.5-coder:1.5b) | Job 28 — Claude Sonnet (claude-sonnet-4-6) |
+|---|---|---|
+| Services generated | 6 | 6 |
+| Files generated | 78 | 102 |
+| Tokens used | 45,455 | 126,673 |
+| Bundle size | 39,810 bytes | 101,238 bytes |
+| Runtime | 1,893s (~31 min) | 1,090s (~18 min) |
+| Compilation (6 services) | 0/6 passed | **6/6 passed** |
+| Repair loop needed | All failed after 3 attempts | None needed (all first-attempt) |
+
+**Job 27 services:** spring-petclinic-commons, owner-service, vet-service-2, pet-service, vet-service, vet-service-4
+
+**Job 28 services:** spring-petclinic-commons, owner-service, pet-service, visit-service, vet-service, infrastructure-service
+
+### Job 28 — Full Eval Metrics (POST /api/eval/28/all)
+
+| Metric | Multi-agent | Single-prompt-claude | Single-prompt-gpt4o |
+|---|---|---|---|
+| COMPILATION_SUCCESS | **1.0 (100%)** | 0.0 | 0.0 |
+| COMPILATION_FIRST_ATTEMPT | **1.0 (100%)** | — | — |
+| COMPILATION_POST_REPAIR | **1.0 (100%)** | — | — |
+| COVERAGE | 0.1667 (16.7%) | 0.0 | 0.0 |
+| API_COMPLETENESS | 0.338 (33.8%) | 0.0 | 0.0 |
+| LLM_JUDGE_SCORE | 0.0 * | 0.0 | 0.0 |
+| SHARED_CLASS_DUPLICATION_RATE | 0.2273 (22.7%) | — | — |
+| INTER_SERVICE_COUPLING | 0.8889 (88.9%) | — | — |
+| AVG_LCOM4 | 1.1364 | — | — |
+| PERFECT_COHESION_PCT | **0.8864 (88.6%)** | — | — |
+
+*\* LLM_JUDGE_SCORE = 0 because Claude was in DEGRADED self-scoring mode (OPENAI_API_KEY not set, so GPT-4o judge was unavailable). Single-prompt baselines = 0 because no code was generated for them in this run (Phase 4.2 not yet run).*
+
+### Aggregate Eval Metrics — Prior Runs (n=10)
+
+| Metric | Multi-agent | Single-prompt-claude | Single-prompt-gpt4o |
+|---|---|---|---|
+| COMPILATION_SUCCESS | mean=0.6606, std=0.1268, min=0.4594, max=0.8622 | 0.0 | 0.0 |
+| COVERAGE | mean=0.3416, std=0.053, min=0.2867, max=0.4576 | 0.0 | 0.0 |
+| API_COMPLETENESS | mean=0.7669, std=0.0691, min=0.6404, max=0.8851 | mean=0.5416 | mean=0.5111 |
+| LLM_JUDGE_SCORE | mean=6.7671, std=0.7077, min=5.8339, max=8.1518 | mean=6.017 | mean=5.7041 |
