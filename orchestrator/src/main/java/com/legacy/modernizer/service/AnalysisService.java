@@ -75,6 +75,9 @@ public class AnalysisService {
             log.info("[job={}] Extracting from {}", jobId, sourceDir);
             DependencyGraph graph = dependencyExtractor.extract(sourceDir);
 
+            log.info("[job={}] Clearing previous Neo4j graph …", jobId);
+            graphIngester.clearGraph();
+
             log.info("[job={}] Ingesting into Neo4j …", jobId);
             IngestionStats stats = graphIngester.ingest(graph);
             log.info("[job={}] {}", jobId, stats);
