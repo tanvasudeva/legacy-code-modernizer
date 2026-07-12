@@ -13,6 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -57,15 +59,16 @@ public class ArchitectAgent {
                 {
                   "service_name": "<lowercase-kebab-case-ending-in-service>",
                   "domain_context": "<2-3 sentence description of the bounded context and its primary responsibility>",
-                  "included_classes": ["fully.qualified.ClassName"],
-                  "rationale": "<why these classes form a cohesive DDD bounded context>"
+                  "included_clusters": ["<cluster-name-exactly-as-given-in-input>"],
+                  "rationale": "<why these clusters form a cohesive DDD bounded context>"
                 }
               ]
             }
 
             Constraints:
             - service_name must be lowercase kebab-case (e.g., "owner-service", "vet-service")
-            - Every class in the input MUST appear in exactly one service's included_classes
+            - Every cluster name in the input MUST appear in exactly one service's included_clusters
+            - Use cluster names EXACTLY as they appear in the input — do not invent or modify them
             - Produce between 3 and 8 services
             - Output ONLY the JSON object
             """;
@@ -93,6 +96,7 @@ public class ArchitectAgent {
      * @param interClusterCalls  cross-cluster CALLS edge counts: fromCluster → toCluster → count
      * @return persisted {@link ServiceBoundary} list (one per proposed microservice)
      */
+    @Transactional
     public List<ServiceBoundary> analyze(Long jobId, Map<String, String> clusterMap,
                                          Map<String, Map<String, Integer>> interClusterCalls) {
         log.info("[architect] Analysing {} classes across {} clusters for job {}",
@@ -115,13 +119,13 @@ public class ArchitectAgent {
         List<ServiceBoundaryDto> boundaries = parseResponse(rawResponse);
         log.info("[architect] Parsed {} service boundaries", boundaries.size());
 
-        // 5. Validate
-        validate(boundaries, clusterMap);
+        // 5. Validate cluster names returned by LLM against known clusters
+        validate(boundaries, grouped);
 
         // 6. Delete any previous boundaries for this job, then persist
         boundaryRepository.deleteByJobId(jobId);
         return boundaries.stream()
-                .map(dto -> persist(jobId, dto))
+                .map(dto -> persist(jobId, dto, grouped))
                 .collect(Collectors.toList());
     }
 
@@ -142,7 +146,16 @@ public class ArchitectAgent {
         sb.append("Cluster map from Louvain community detection:\n\n");
         grouped.forEach((svc, classes) -> {
             sb.append("Cluster \"").append(svc).append("\" (").append(classes.size()).append(" classes):\n");
-            classes.forEach(c -> sb.append("  • ").append(c).append("\n"));
+            // Show at most 5 representative simple names to keep the prompt compact.
+            int limit = Math.min(classes.size(), 5);
+            for (int i = 0; i < limit; i++) {
+                String fqn = classes.get(i);
+                String simpleName = fqn.contains(".") ? fqn.substring(fqn.lastIndexOf('.') + 1) : fqn;
+                sb.append("  • ").append(simpleName).append("\n");
+            }
+            if (classes.size() > 5) {
+                sb.append("  … and ").append(classes.size() - 5).append(" more\n");
+            }
             sb.append("\n");
         });
         int total = grouped.values().stream().mapToInt(List::size).sum();
@@ -173,20 +186,46 @@ public class ArchitectAgent {
     }
 
     private List<ServiceBoundaryDto> parseResponse(String raw) {
+        // First attempt: parse as-is
         try {
             String json = extractJson(raw);
             ArchitectResponse response = objectMapper.readValue(json, ArchitectResponse.class);
-            if (response.services() == null || response.services().isEmpty()) {
-                throw new IllegalStateException("LLM returned empty services list");
+            if (response.services() != null && !response.services().isEmpty()) {
+                return deduplicate(response.services());
             }
-            return response.services();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse LLM response as JSON: " + e.getMessage()
-                    + "\nRaw response:\n" + raw, e);
+        } catch (Exception ignored) {
+            // fall through to recovery
         }
+
+        // Second attempt: recover truncated JSON by finding last complete service object
+        try {
+            String recovered = recoverTruncated(raw);
+            ArchitectResponse response = objectMapper.readValue(recovered, ArchitectResponse.class);
+            if (response.services() != null && !response.services().isEmpty()) {
+                log.warn("[architect] Recovered {} services from truncated/looping LLM response",
+                        response.services().size());
+                return deduplicate(response.services());
+            }
+        } catch (Exception e2) {
+            throw new RuntimeException("Failed to parse LLM response as JSON: " + e2.getMessage()
+                    + "\nRaw response:\n" + raw, e2);
+        }
+
+        throw new RuntimeException("LLM returned empty services list\nRaw response:\n" + raw);
     }
 
-    /** Strips markdown code fences and extracts the outermost JSON object. */
+    /** Deduplicates by service_name, keeping first occurrence (handles LLM repetition loops). */
+    private List<ServiceBoundaryDto> deduplicate(List<ServiceBoundaryDto> services) {
+        return services.stream()
+                .collect(Collectors.toMap(
+                        ServiceBoundaryDto::serviceName,
+                        s -> s,
+                        (a, b) -> a,
+                        java.util.LinkedHashMap::new))
+                .values().stream().toList();
+    }
+
+    /** Strips markdown fences and returns the outermost JSON object. */
     private String extractJson(String raw) {
         String s = raw.replaceAll("(?s)```[a-z]*\\s*", "").replaceAll("```", "").trim();
         int start = s.indexOf('{');
@@ -194,34 +233,76 @@ public class ArchitectAgent {
         return (start != -1 && end > start) ? s.substring(start, end + 1) : s;
     }
 
-    private void validate(List<ServiceBoundaryDto> services, Map<String, String> input) {
-        Set<String> outputClasses = new HashSet<>();
+    /**
+     * Recovers a truncated JSON response by finding the last complete service object
+     * (depth returns to 1 inside the services array) and closing the array + root object.
+     * Also handles repetition loops by truncating after all unique entries.
+     */
+    private String recoverTruncated(String raw) {
+        String s = raw.replaceAll("(?s)```[a-z]*\\s*", "").replaceAll("```", "").trim();
+        int start = s.indexOf('{');
+        if (start == -1) throw new IllegalArgumentException("No JSON object found");
+        String json = s.substring(start);
+
+        int lastServiceClose = -1;
+        int depth = 0;
+        boolean inString = false;
+        char[] chars = json.toCharArray();
+        for (int i = 0; i < chars.length; i++) {
+            char c = chars[i];
+            if (c == '\\' && inString) { i++; continue; }
+            if (c == '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 1) lastServiceClose = i; // closed a service-level object
+            }
+        }
+        if (lastServiceClose < 0) throw new IllegalArgumentException("No complete service object found");
+        return json.substring(0, lastServiceClose + 1) + "]}";
+    }
+
+    private void validate(List<ServiceBoundaryDto> services, Map<String, List<String>> grouped) {
+        Set<String> outputClusters = new HashSet<>();
         for (ServiceBoundaryDto svc : services) {
             if (svc.serviceName() == null || !svc.serviceName().matches("[a-z][a-z0-9-]+")) {
                 log.warn("[architect] Non-standard service name: '{}'", svc.serviceName());
             }
-            if (svc.includedClasses() != null) {
-                outputClasses.addAll(svc.includedClasses());
+            if (svc.includedClusters() != null) {
+                outputClusters.addAll(svc.includedClusters());
             }
         }
-        Set<String> missing = new HashSet<>(input.keySet());
-        missing.removeAll(outputClasses);
+        Set<String> missing = new HashSet<>(grouped.keySet());
+        missing.removeAll(outputClusters);
         if (!missing.isEmpty()) {
-            log.warn("[architect] {} input classes absent from LLM output: {}", missing.size(), missing);
+            log.warn("[architect] {} clusters absent from LLM output: {}", missing.size(), missing);
         }
     }
 
-    private ServiceBoundary persist(Long jobId, ServiceBoundaryDto dto) {
+    private ServiceBoundary persist(Long jobId, ServiceBoundaryDto dto, Map<String, List<String>> grouped) {
+        // Expand cluster names → full class FQNs using the known cluster map.
+        List<String> classFqns;
+        if (dto.includedClusters() != null && !dto.includedClusters().isEmpty()) {
+            classFqns = dto.includedClusters().stream()
+                    .flatMap(cluster -> grouped.getOrDefault(cluster, List.of()).stream())
+                    .distinct()
+                    .collect(Collectors.toList());
+        } else {
+            // Fallback: LLM used the old schema (should not happen after prompt update)
+            classFqns = dto.includedClasses() != null ? dto.includedClasses() : List.of();
+        }
         ServiceBoundary entity = ServiceBoundary.builder()
                 .jobId(jobId)
                 .serviceName(dto.serviceName())
-                .classFqns(dto.includedClasses() != null ? dto.includedClasses() : List.of())
+                .classFqns(classFqns)
                 .description(dto.domainContext())
                 .rationale(dto.rationale())
                 .build();
         ServiceBoundary saved = boundaryRepository.save(entity);
-        log.debug("[architect] Persisted: {} ({} classes)", saved.getServiceName(),
-                saved.getClassFqns().size());
+        log.debug("[architect] Persisted: {} ({} classes from {} clusters)",
+                saved.getServiceName(), saved.getClassFqns().size(),
+                dto.includedClusters() != null ? dto.includedClusters().size() : 0);
         return saved;
     }
 
