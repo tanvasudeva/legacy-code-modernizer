@@ -37,6 +37,14 @@ public class GraphIngester {
         }
     }
 
+    /** Wipes all nodes and relationships from Neo4j. Call before each new repo ingestion. */
+    public void clearGraph() {
+        try (Session session = driver.session()) {
+            session.run("MATCH (n) DETACH DELETE n");
+            log.info("[graph] Neo4j graph cleared");
+        }
+    }
+
     public IngestionStats ingest(DependencyGraph graph) {
         List<ClassNode> nodes = graph.getNodes();
         List<CallEdge>  edges = graph.getEdges();

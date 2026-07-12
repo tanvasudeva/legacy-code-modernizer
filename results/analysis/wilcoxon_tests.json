@@ -2,81 +2,81 @@
   {
     "metric_name": "COMPILATION_SUCCESS",
     "vs_system": "single-prompt-claude",
-    "W": 0.0,
-    "p_value": 0.002,
-    "n_pairs": 10,
-    "direction": "multi-agent >",
-    "significant": "\u2713",
-    "note": ""
+    "W": NaN,
+    "p_value": NaN,
+    "n_pairs": 0,
+    "direction": "n/a",
+    "significant": "",
+    "note": "< 4 paired samples"
   },
   {
     "metric_name": "COMPILATION_SUCCESS",
     "vs_system": "single-prompt-gpt4o",
-    "W": 0.0,
-    "p_value": 0.002,
-    "n_pairs": 10,
-    "direction": "multi-agent >",
-    "significant": "\u2713",
-    "note": ""
+    "W": NaN,
+    "p_value": NaN,
+    "n_pairs": 0,
+    "direction": "n/a",
+    "significant": "",
+    "note": "< 4 paired samples"
   },
   {
     "metric_name": "COVERAGE",
     "vs_system": "single-prompt-claude",
-    "W": 0.0,
-    "p_value": 0.002,
-    "n_pairs": 10,
-    "direction": "multi-agent >",
-    "significant": "\u2713",
-    "note": ""
+    "W": NaN,
+    "p_value": NaN,
+    "n_pairs": 0,
+    "direction": "n/a",
+    "significant": "",
+    "note": "< 4 paired samples"
   },
   {
     "metric_name": "COVERAGE",
     "vs_system": "single-prompt-gpt4o",
-    "W": 0.0,
-    "p_value": 0.002,
-    "n_pairs": 10,
-    "direction": "multi-agent >",
-    "significant": "\u2713",
-    "note": ""
+    "W": NaN,
+    "p_value": NaN,
+    "n_pairs": 0,
+    "direction": "n/a",
+    "significant": "",
+    "note": "< 4 paired samples"
   },
   {
     "metric_name": "API_COMPLETENESS",
     "vs_system": "single-prompt-claude",
-    "W": 0.0,
-    "p_value": 0.002,
-    "n_pairs": 10,
-    "direction": "multi-agent >",
-    "significant": "\u2713",
-    "note": ""
+    "W": NaN,
+    "p_value": NaN,
+    "n_pairs": 0,
+    "direction": "n/a",
+    "significant": "",
+    "note": "< 4 paired samples"
   },
   {
     "metric_name": "API_COMPLETENESS",
     "vs_system": "single-prompt-gpt4o",
-    "W": 0.0,
-    "p_value": 0.002,
-    "n_pairs": 10,
-    "direction": "multi-agent >",
-    "significant": "\u2713",
-    "note": ""
+    "W": NaN,
+    "p_value": NaN,
+    "n_pairs": 0,
+    "direction": "n/a",
+    "significant": "",
+    "note": "< 4 paired samples"
   },
   {
     "metric_name": "LLM_JUDGE_SCORE",
     "vs_system": "single-prompt-claude",
-    "W": 0.0,
-    "p_value": 0.002,
-    "n_pairs": 10,
-    "direction": "multi-agent >",
-    "significant": "\u2713",
-    "note": ""
+    "W": NaN,
+    "p_value": NaN,
+    "n_pairs": 0,
+    "direction": "n/a",
+    "significant": "",
+    "note": "< 4 paired samples"
   },
   {
     "metric_name": "LLM_JUDGE_SCORE",
     "vs_system": "single-prompt-gpt4o",
-    "W": 0.0,
-    "p_value": 0.002,
-    "n_pairs": 10,
-    "direction": "multi-agent >",
-    "significant": "\u2713",
-    "note": ""
+    "W": NaN,
+    "p_value": NaN,
+    "n_pairs": 0,
+    "direction": "n/a",
+    "significant": "",
+    "note": "< 4 paired samples"
   }
 ]
