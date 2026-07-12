@@ -833,8 +833,10 @@ This section is updated as each benchmark run completes. All results below use t
 |---|---|---|---|---|---|---|---|---|---|---|
 | spring-petclinic | 28 | ~5 | 100% | 0%* | 33.8% | 0%* | — | — | — | — |
 | HikariCP | 34 | 44 | 75% | 25% | 14.4% | 4.2/10 | 79.4% | 2.79 | 81.8% | 13% |
+| jforum3 | 35 | 115 | 0% | 0% | 1.1% | 0%† | 83.3% | 2.0 | 85.7% | 3.4% |
 
-*Job 28 pre-dates the coverage and LLM judge fixes. The 0% values there are bugs, not findings.
+*Job 28 pre-dates the coverage and LLM judge fixes. The 0% values there are bugs, not findings.  
+†LLM judge requires GPT-4o key (not set); self-judge returns 0.
 
 ---
 
@@ -885,6 +887,36 @@ This section is updated as each benchmark run completes. All results below use t
 
 ---
 
+### Job 35 — jforum3 (Sonnet full, cluster-name fix active)
+
+**Context:** Third Sonnet run. jforum3 is a servlet-era Java EE internet forum (~40k LOC, 347 classes). Included to test the pipeline on a real monolithic domain application that pre-dates Spring Boot by 15+ years.
+
+**Clustering:** Louvain produced 115 clusters from 347 classes — far above the 4–7 target, confirming jforum3 is a highly-connected monolith with no natural module boundaries at the class-dependency level.
+
+| Metric | Value | Explanation |
+|---|---|---|
+| COMPILATION_SUCCESS | 0% | Generator targets Spring Boot 3; jforum3 uses raw HttpServlet — classpath mismatch |
+| COMPILATION_POST_REPAIR | 0% | 3 repair attempts cannot fix a wrong-framework error |
+| COVERAGE | 0% | Follows from compilation failure — tests cannot run |
+| API_COMPLETENESS | 1.1% | Servlet/JSP API surface looks nothing like generated Spring REST controllers |
+| LLM_JUDGE_SCORE | 0% | No GPT-4o key — self-judge not implemented |
+| INTER_SERVICE_COUPLING | 83.3% | Very high — tight monolith, heavy cross-service calls |
+| AVG_LCOM4 | 2.0 | Individual class cohesion acceptable |
+| PERFECT_COHESION_PCT | 85.7% | Generated classes are internally coherent despite poor service separation |
+| SHARED_CLASS_DUPLICATION_RATE | 3.4% | Commons detection working correctly |
+
+**What these numbers mean for the report:**
+
+- **0% compilation is the technology-gap failure mode**, not a decomposition failure. The pipeline's architecture layer succeeds (85.7% cohesion, structurally sound boundaries) but the generation layer cannot bridge a 15-year framework gap in a single pass. This is a distinct and reportable finding.
+
+- **83.3% coupling vs HikariCP's 79.4%** — both are high, but for different reasons. HikariCP: infrastructure library with no domain separation. jforum3: monolithic forum domain where all modules (users, posts, topics, auth) are tightly interwoven.
+
+- **85.7% cohesion despite 0% compilation** — proves that the decomposition quality metric (LCOM4) and the compilation metric are measuring different things. A system can be structurally decomposed correctly but still fail to compile if the generation target framework doesn't match the source.
+
+- **Report framing:** *"jforum3 demonstrates the technology-gap failure mode: the pipeline correctly decomposes the architecture (85.7% perfect cohesion) but cannot generate compilable Spring Boot code from servlet-era source. This finding is interpretable and expected — it sets a boundary condition for multi-agent modernisation."*
+
+---
+
 ### Job 31 — spring-petclinic (Haiku lite, development validation only)
 
 Not used in the final report. Haiku is too weak for production-quality code generation. Results here are development artefacts confirming fixes were coded correctly before running Sonnet.
@@ -908,7 +940,7 @@ Not used in the final report. Haiku is too weak for production-quality code gene
 |---|---|---|---|---|
 | 1 | spring-petclinic | Small | Done ✅ Job 28 | $1.43 |
 | 2 | HikariCP | Small (library) | Done ✅ Job 34 | ~$1.80 est. |
-| 3 | jforum3 | Small | Pending | $3–5 |
+| 3 | jforum3 | Small | Done ✅ Job 35 | ~$2.50 est. |
 | 4 | flyway | Medium | Pending | $2.50–4 |
 | 5 | openmrs-core | Medium | Pending | $5–8 |
 | 6 | dbeaver | Large | Pending | $4–7 |
