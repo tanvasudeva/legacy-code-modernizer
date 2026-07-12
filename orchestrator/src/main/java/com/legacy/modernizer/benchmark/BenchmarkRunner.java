@@ -35,8 +35,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * Phase 4.1 — Benchmark Runner.
@@ -274,6 +276,154 @@ public class BenchmarkRunner {
 
         } catch (Exception e) {
             log.error("[benchmark] ✗ {} failed: {}", repoName, e.getMessage(), e);
+            return failed(repoName, jobId, e.getMessage(), start);
+        }
+    }
+
+    /**
+     * Resumes a previously failed pipeline run from the ArchitectAgent step.
+     * The job must already have a {@code clusterMap} in its metadata (set by
+     * {@link com.legacy.modernizer.service.AnalysisService}). RAG chunks must
+     * already be indexed in Qdrant for the given jobId.
+     */
+    @SuppressWarnings("unchecked")
+    public BenchmarkResult resume(Long jobId, Path projectRoot) {
+        long start = System.currentTimeMillis();
+
+        MigrationJob job = jobRepository.findById(jobId)
+                .orElseThrow(() -> new NoSuchElementException("Job not found: " + jobId));
+
+        String repoName = job.getName().startsWith("benchmark-")
+                ? job.getName().substring("benchmark-".length())
+                : job.getName();
+
+        Map<String, Object> meta = job.getMetadata();
+        if (meta == null || !meta.containsKey("clusterMap")) {
+            return failed(repoName, jobId,
+                    "Job " + jobId + " has no clusterMap in metadata — re-run from scratch", start);
+        }
+
+        Map<String, String> clusterMap = (Map<String, String>) meta.get("clusterMap");
+
+        // interClusterCalls comes back from JSONB as Map<String, Map<String, Object>>
+        // with numeric values as Integer. Re-cast carefully.
+        Map<String, Map<String, Integer>> interClusterCalls = new LinkedHashMap<>();
+        Object rawIcc = meta.get("interClusterCalls");
+        if (rawIcc instanceof Map<?, ?> outerMap) {
+            outerMap.forEach((from, targets) -> {
+                if (targets instanceof Map<?, ?> innerMap) {
+                    Map<String, Integer> inner = new LinkedHashMap<>();
+                    innerMap.forEach((to, count) ->
+                            inner.put(String.valueOf(to),
+                                    count instanceof Number ? ((Number) count).intValue() : 0));
+                    interClusterCalls.put(String.valueOf(from), inner);
+                }
+            });
+        }
+
+        Path srcDir = Path.of(job.getSourceDirectory());
+        log.info("[benchmark][resume] Resuming job {} ({}) from ArchitectAgent — {} classes, {} clusters",
+                jobId, repoName, clusterMap.size(), new java.util.HashSet<>(clusterMap.values()).size());
+
+        try {
+            // Step 2: DDD boundaries
+            log.info("[benchmark][{}] Resuming Step 2/5 — architect agent", repoName);
+            architectAgent.analyze(jobId, clusterMap, interClusterCalls);
+
+            // Step 2b: Shared library detection
+            log.info("[benchmark][{}] Step 2b/5 — shared library detection", repoName);
+            SharedLibraryPlan sharedPlan = sharedLibraryDetector.detect(jobId, repoName);
+            if (sharedPlan.totalSharedClasses() > 0) {
+                log.info("[benchmark][{}] {} shared classes → commons module '{}'",
+                        repoName, sharedPlan.totalSharedClasses(), sharedPlan.commonsModuleName());
+            }
+
+            List<ServiceBoundary> boundaries = boundaryRepository.findByJobId(jobId)
+                    .stream()
+                    .sorted((a, b) -> {
+                        boolean aCommons = a.getServiceName().endsWith("-commons");
+                        boolean bCommons = b.getServiceName().endsWith("-commons");
+                        if (aCommons == bCommons) return 0;
+                        return aCommons ? -1 : 1;
+                    })
+                    .toList();
+            log.info("[benchmark][{}] {} service boundaries (incl. commons)", repoName, boundaries.size());
+
+            // Step 3: Generate per-boundary
+            int totalFiles  = 0;
+            int totalTokens = 0;
+            List<String> serviceNames = new ArrayList<>();
+
+            for (ServiceBoundary boundary : boundaries) {
+                String svcName = boundary.getServiceName();
+                serviceNames.add(svcName);
+                log.info("[benchmark][{}] Step 3/5 — generating {}", repoName, svcName);
+
+                List<String> ragSnippets = fetchRag(jobId, boundary, ragTopK);
+
+                var svcResult = serviceGeneratorAgent.generate(jobId, boundary, ragSnippets, srcDir);
+                totalFiles  += svcResult.files().size();
+                totalTokens += tokenCount(svcResult.task().getTokensUsed());
+
+                if (!svcResult.files().isEmpty()) {
+                    try {
+                        String pkg        = toPackage(svcName);
+                        String entityName = extractEntityName(svcResult.files().stream()
+                                .map(f -> f.filePath()).toList());
+                        List<Artifact> svcArtifacts = artifactRepository
+                                .findByJobIdAndClassFqn(jobId, svcName)
+                                .stream().filter(a -> a.getArtifactType() == ArtifactType.SERVICE_CODE)
+                                .toList();
+
+                        var testResult = testWriterAgent.generate(
+                                jobId, svcName, pkg, entityName,
+                                findContent(svcArtifacts, "Service.java"),
+                                findContent(svcArtifacts, "Controller.java"),
+                                findContent(svcArtifacts, "entity/"),
+                                findContent(svcArtifacts, "pom.xml"),
+                                ragSnippets);
+                        totalFiles  += testResult.files().size();
+                        totalTokens += tokenCount(testResult.task().getTokensUsed());
+
+                        if (!skipDocs) {
+                            var docResult = docGenAgent.generate(
+                                    jobId, boundary, pkg, entityName,
+                                    findContent(svcArtifacts, "Controller.java"),
+                                    findContent(svcArtifacts, "Service.java"),
+                                    findContent(svcArtifacts, "entity/"),
+                                    ragSnippets);
+                            totalFiles  += docResult.files().size();
+                            totalTokens += tokenCount(docResult.task().getTokensUsed());
+                        }
+                    } catch (Exception e) {
+                        log.warn("[benchmark][{}] Test/doc gen failed for {}: {}",
+                                repoName, svcName, e.getMessage());
+                    }
+                }
+            }
+
+            // Step 4: Bundle
+            log.info("[benchmark][{}] Step 4/5 — assembling bundle", repoName);
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            BundleManifest manifest = bundleAssembler.assemble(jobId, buf);
+            byte[] zipBytes = buf.toByteArray();
+
+            // Step 5: Save to results/
+            log.info("[benchmark][{}] Step 5/5 — writing results ({} bytes)", repoName, zipBytes.length);
+            Path outDir = saveResults(repoName, jobId, zipBytes, manifest, totalFiles,
+                    totalTokens, boundaries.size(), boundaries, System.currentTimeMillis() - start);
+
+            long elapsed = System.currentTimeMillis() - start;
+            log.info("[benchmark] ✓ {} resumed+done in {}s — {} services, {} files, {} tokens",
+                    repoName, elapsed / 1000, boundaries.size(), totalFiles, totalTokens);
+
+            return new BenchmarkResult(
+                    repoName, jobId, boundaries.size(), totalFiles, totalTokens,
+                    elapsed, true, outDir.resolve("bundle.zip").toString(),
+                    serviceNames, null, LocalDateTime.now());
+
+        } catch (Exception e) {
+            log.error("[benchmark] ✗ {} resume failed: {}", repoName, e.getMessage(), e);
             return failed(repoName, jobId, e.getMessage(), start);
         }
     }

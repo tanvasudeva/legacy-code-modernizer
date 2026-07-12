@@ -80,6 +80,22 @@ public class BenchmarkController {
     }
 
     /**
+     * Resume a previously failed pipeline run for an existing job, starting from
+     * ArchitectAgent.  The job must have clusterMap data in its metadata (set during
+     * the analysis phase) and its RAG chunks must already be indexed.
+     *
+     * <p>Example: {@code POST /api/benchmark/resume/35}
+     */
+    @PostMapping("/resume/{jobId}")
+    public ResponseEntity<?> resumeJob(@PathVariable Long jobId) {
+        log.info("[benchmark-ctrl] Resuming job {} from ArchitectAgent", jobId);
+        BenchmarkResult result = benchmarkRunner.resume(jobId, projectRoot());
+        return result.success()
+                ? ResponseEntity.ok(result)
+                : ResponseEntity.internalServerError().body(result);
+    }
+
+    /**
      * Run all 10 benchmark repos sequentially.  This is a long-running call
      * (potentially hours if LLM rate limits apply) — use the script-based runner
      * ({@code scripts/run_benchmarks.py}) for production batch runs instead.
