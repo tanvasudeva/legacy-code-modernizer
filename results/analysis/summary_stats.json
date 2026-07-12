@@ -1,86 +1,86 @@
 {
   "COMPILATION_SUCCESS__multi-agent": {
-    "mean": 0.6606,
-    "std": 0.1268,
-    "min": 0.4594,
-    "max": 0.8622,
-    "n": 10
+    "mean": 0.2917,
+    "std": 0.4587,
+    "min": 0.0,
+    "max": 1.0,
+    "n": 6
   },
   "COMPILATION_SUCCESS__single-prompt-claude": {
     "mean": 0.0,
-    "std": 0.0,
+    "std": NaN,
     "min": 0.0,
     "max": 0.0,
-    "n": 10
+    "n": 1
   },
   "COMPILATION_SUCCESS__single-prompt-gpt4o": {
     "mean": 0.0,
-    "std": 0.0,
+    "std": NaN,
     "min": 0.0,
     "max": 0.0,
-    "n": 10
+    "n": 1
   },
   "COVERAGE__multi-agent": {
-    "mean": 0.3416,
-    "std": 0.053,
-    "min": 0.2867,
-    "max": 0.4576,
-    "n": 10
+    "mean": 0.0694,
+    "std": 0.1108,
+    "min": 0.0,
+    "max": 0.25,
+    "n": 6
   },
   "COVERAGE__single-prompt-claude": {
     "mean": 0.0,
-    "std": 0.0,
+    "std": NaN,
     "min": 0.0,
     "max": 0.0,
-    "n": 10
+    "n": 1
   },
   "COVERAGE__single-prompt-gpt4o": {
     "mean": 0.0,
-    "std": 0.0,
+    "std": NaN,
     "min": 0.0,
     "max": 0.0,
-    "n": 10
+    "n": 1
   },
   "API_COMPLETENESS__multi-agent": {
-    "mean": 0.7669,
-    "std": 0.0691,
-    "min": 0.6404,
-    "max": 0.8851,
-    "n": 10
+    "mean": 0.1743,
+    "std": 0.0817,
+    "min": 0.1268,
+    "max": 0.338,
+    "n": 6
   },
   "API_COMPLETENESS__single-prompt-claude": {
-    "mean": 0.5416,
-    "std": 0.0718,
-    "min": 0.4147,
-    "max": 0.6631,
-    "n": 10
+    "mean": 0.0,
+    "std": NaN,
+    "min": 0.0,
+    "max": 0.0,
+    "n": 1
   },
   "API_COMPLETENESS__single-prompt-gpt4o": {
-    "mean": 0.5111,
-    "std": 0.0521,
-    "min": 0.4314,
-    "max": 0.5993,
-    "n": 10
+    "mean": 0.0,
+    "std": NaN,
+    "min": 0.0,
+    "max": 0.0,
+    "n": 1
   },
   "LLM_JUDGE_SCORE__multi-agent": {
-    "mean": 6.7671,
-    "std": 0.7077,
-    "min": 5.8339,
-    "max": 8.1518,
-    "n": 10
+    "mean": 0.7,
+    "std": 1.7146,
+    "min": 0.0,
+    "max": 4.2,
+    "n": 6
   },
   "LLM_JUDGE_SCORE__single-prompt-claude": {
-    "mean": 6.017,
-    "std": 0.4921,
-    "min": 5.2578,
-    "max": 6.8198,
-    "n": 10
+    "mean": 0.0,
+    "std": NaN,
+    "min": 0.0,
+    "max": 0.0,
+    "n": 1
   },
   "LLM_JUDGE_SCORE__single-prompt-gpt4o": {
-    "mean": 5.7041,
-    "std": 0.5792,
-    "min": 4.8572,
-    "max": 6.6403,
-    "n": 10
+    "mean": 0.0,
+    "std": NaN,
+    "min": 0.0,
+    "max": 0.0,
+    "n": 1
   }
 }

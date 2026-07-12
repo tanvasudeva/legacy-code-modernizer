@@ -1,18 +1,18 @@
 % Phase 4.4 — Statistical Analysis
-% Data source: synthetic
+% Data source: database
 
 \begin{table}[ht]
 \centering
-\caption{Benchmark results: mean $\pm$ SD across 10 Java monoliths ($n$=10).}
+\caption{Benchmark results: mean $\pm$ SD across 20 Java monoliths ($n$=20).}
 \label{tab:results}
 \begin{tabular}{lrrrrrr}
 \toprule
 \textbf{Metric} & \textbf{Scale} & \textbf{Multi-agent} & \textbf{Claude} & $W$, $p$ & \textbf{GPT-4o} & $W$, $p$ \\
 \midrule
-Compilation~rate & 0–1 & \textbf{0.661 ± 0.127} & 0.000 ± 0.000 & 0.0, 0.0020$^*$ & 0.000 ± 0.000 & 0.0, 0.0020$^*$ \\
-Test~coverage & 0–1 & \textbf{0.342 ± 0.053} & 0.000 ± 0.000 & 0.0, 0.0020$^*$ & 0.000 ± 0.000 & 0.0, 0.0020$^*$ \\
-API~completeness & 0–1 & \textbf{0.767 ± 0.069} & 0.542 ± 0.072 & 0.0, 0.0020$^*$ & 0.511 ± 0.052 & 0.0, 0.0020$^*$ \\
-LLM~judge~score & 1–10 & \textbf{6.77 ± 0.71} & 6.02 ± 0.49 & 0.0, 0.0020$^*$ & 5.70 ± 0.58 & 0.0, 0.0020$^*$ \\
+Compilation~rate & 0–1 & \textbf{0.292 ± 0.459} & 0.000 ± nan & —, — & 0.000 ± nan & —, — \\
+Test~coverage & 0–1 & \textbf{0.069 ± 0.111} & 0.000 ± nan & —, — & 0.000 ± nan & —, — \\
+API~completeness & 0–1 & \textbf{0.174 ± 0.082} & 0.000 ± nan & —, — & 0.000 ± nan & —, — \\
+LLM~judge~score & 1–10 & \textbf{0.70 ± 1.71} & 0.00 ± nan & —, — & 0.00 ± nan & —, — \\
 \bottomrule
 \multicolumn{7}{l}{\small $^*$ $p < 0.05$, Wilcoxon signed-rank test (two-sided).}
 \end{tabular}
