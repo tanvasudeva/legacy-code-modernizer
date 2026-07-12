@@ -688,8 +688,8 @@ def plot_boxplots(df: pd.DataFrame, out_dir: Path) -> None:
 
 def plot_repo_heatmap(df: pd.DataFrame, out_dir: Path) -> None:
     """Heatmap: rows = repos, cols = metrics, values = multi-agent score."""
-    ma = df[df["system_id"] == "multi-agent"].pivot(
-        index="repo_name", columns="metric_name", values="value"
+    ma = df[df["system_id"] == "multi-agent"].pivot_table(
+        index="repo_name", columns="metric_name", values="value", aggfunc="mean"
     )
     # Order repos by LOC
     ma = ma.reindex([r for r, _ in REPOS if r in ma.index])
