@@ -325,9 +325,11 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | jforum3 | 35 | 115 | 0% | 0% | 0% | 1.1% | 0%† | 83.3% | 2.0 | 85.7% | 3.4% |
 | flyway | 39 | — | 100% | 88.9% | 22.2% | 25.8% | 4.8/10 | 63.7% | 3.62 | 62.2% | 9.8% |
 | openmrs-core | 40 | 62 | 66.7% | 66.7% | 44.4% | 3.9% | 5.4/10 | 73.9% | 4.10 | 54.6% | 9.3% |
+| dbeaver‡ | 41 | 53 | 87.5% | 87.5% | 37.5% | 8.9% | 5.2/10 | 65.2% | 4.41 | 50.0% | 4.3% |
 
 \* Job 28 pre-dates coverage and LLM judge fixes — those 0% values are bugs, not findings.  
-† LLM judge requires GPT-4o key (not set); self-judge returns 0.
+† LLM judge requires GPT-4o key (not set); self-judge returns 0.  
+‡ dbeaver run covers only the `org.jkiss.dbeaver.model` plugin module (1,073 classes, partial clone of 2 of ~100 plugins). Results are valid at medium scale but should not be cited as a large-repo data point. BroadleafCommerce (2,985 classes) is the sole large-tier benchmark.
 
 ---
 
@@ -442,6 +444,33 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 
 ---
 
+### Job 41 — dbeaver (model module) Analysis
+
+**Profile:** Sonnet full, Louvain clustering, all fixes active
+**Repo:** `org.jkiss.dbeaver.model` plugin only — 1,073 Java classes (partial clone; full dbeaver has ~100 plugins). Listed as "Large" in plan but runs at medium scale.
+**Duration:** 53 min | **Tokens:** 325,272 | **Services:** 8
+**Date:** 2026-07-18
+
+> ⚠️ **Scope caveat:** This run covers only the `org.jkiss.dbeaver.model` module, not the full dbeaver desktop application (~500k LOC across ~100 plugins). The benchmark repository was partially cloned. Results are valid for this module but **should not be cited as a large-repo data point**. BroadleafCommerce (2,985 classes) is the sole true large-tier benchmark in this study.
+
+**What the numbers say:**
+
+| Finding | Metric | Value | Interpretation |
+|---|---|---|---|
+| Strong compilation | COMPILATION_SUCCESS | 87.5% | 7/8 services compiled — second best after flyway (100%) |
+| Repair not needed | COMPILATION_POST_REPAIR | 87.5% | Same as first attempt — pure model layer, few framework deps |
+| Good coverage | COVERAGE | 37.5% | Solid — model layer has testable value objects and validators |
+| Low API recovery | API_COMPLETENESS | 8.9% | dbeaver model uses many internal extension interfaces |
+| Strong judge score | LLM_JUDGE_SCORE | 5.2/10 | Second-best after openmrs-core (5.4) |
+| Moderate coupling | INTER_SERVICE_COUPLING | 65.2% | Better than openmrs-core (73.9%) — model layer more bounded |
+| Weakest cohesion | PERFECT_COHESION_PCT | 50.0% | Lowest yet — 8 heterogeneous model services hard to keep cohesive |
+| Low duplication | SHARED_CLASS_DUPLICATION | 4.3% | Lowest duplication — model classes cleanly partitioned |
+
+**Report framing for dbeaver:**
+> *"The dbeaver-model module (87.5% compilation, 5.2/10 LLM judge) confirms that pure model/domain layers — free of UI and framework coupling — decompose cleanly. The 65.2% inter-service coupling and 50.0% cohesion reflect the inherent challenge of partitioning a large type hierarchy (data sources, connections, drivers, metadata) into bounded services. Note: this run covers only 1 of ~100 dbeaver plugins and does not represent large-scale pipeline performance."*
+
+---
+
 ### Pending Runs
 
 | Repo | Tier | Domain | Status | Algorithm plan |
@@ -449,7 +478,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | jforum3 | Small | Social forum, servlet-era | **Done (job 35)** | Louvain |
 | flyway | Medium | DB migration DSL | **Done (job 39)** | Louvain |
 | openmrs-core | Medium | Healthcare | **Done (job 40)** | Louvain |
-| dbeaver | Large | Desktop DB tool | Pending | Louvain only |
+| dbeaver (model module only) | Medium‡ | Desktop DB tool | **Done (job 41)** | Louvain |
 | BroadleafCommerce | Large | E-commerce | Pending (most expensive) | Louvain only |
 
 To run next:
