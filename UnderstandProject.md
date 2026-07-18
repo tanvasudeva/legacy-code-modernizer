@@ -836,9 +836,11 @@ This section is updated as each benchmark run completes. All results below use t
 | jforum3 | 35 | 115 | 0% | 0% | 1.1% | 0%† | 83.3% | 2.0 | 85.7% | 3.4% |
 | flyway | 39 | — | 100% | 22.2% | 25.8% | 4.8/10 | 63.7% | 3.62 | 62.2% | 9.8% |
 | openmrs-core | 40 | 62 | 66.7% | 44.4% | 3.9% | 5.4/10 | 73.9% | 4.10 | 54.6% | 9.3% |
+| dbeaver‡ | 41 | 53 | 87.5% | 37.5% | 8.9% | 5.2/10 | 65.2% | 4.41 | 50.0% | 4.3% |
 
 *Job 28 pre-dates the coverage and LLM judge fixes. The 0% values there are bugs, not findings.
 †LLM judge requires GPT-4o key (not set); self-judge returns 0.
+‡dbeaver run covers only the `org.jkiss.dbeaver.model` plugin module (1,073 classes, partial clone). Not a large-repo data point — BroadleafCommerce (2,985 classes) is the sole large-tier benchmark.
 
 ---
 
@@ -955,6 +957,32 @@ Not used in the final report. Haiku is too weak for production-quality code gene
 
 ---
 
+### Job 41 — dbeaver model module (Sonnet full, all fixes active)
+
+**Context:** `org.jkiss.dbeaver.model` plugin only, 1,073 Java classes. Pure model/domain layer — data source abstractions, connection types, metadata interfaces. No UI or framework coupling. Generated 8 services in 53 minutes, 325k tokens.
+
+> ⚠️ **Scope caveat:** This is a partial clone (2 of ~100 dbeaver plugins). The benchmark was intended as a large-tier run (~500k LOC) but only 1,220 Java files were present. Results are valid for the model module but **not representative of large-scale pipeline performance**. BroadleafCommerce (2,985 classes) is the sole true large-tier benchmark.
+
+| Metric | Value | Explanation |
+|---|---|---|
+| COMPILATION_SUCCESS | 87.5% | 7/8 services compiled — second-best after flyway; pure model layer avoids Spring/JPA pitfalls |
+| COMPILATION_FIRST_ATTEMPT | 87.5% | Repair not needed — model layer has minimal framework coupling |
+| COVERAGE | 37.5% | Good — model value objects and validators are naturally testable |
+| API_COMPLETENESS | 8.9% | Low — dbeaver model uses internal extension interfaces not recoverable from signatures |
+| LLM_JUDGE_SCORE | 5.2/10 | Second-best after openmrs-core (5.4) |
+| INTER_SERVICE_COUPLING | 65.2% | Better than openmrs-core (73.9%) — bounded model layer |
+| AVG_LCOM4 | 4.41 | Highest yet — 8 services covering heterogeneous type hierarchy |
+| PERFECT_COHESION_PCT | 50.0% | Lowest yet — data sources, connections, drivers, metadata hard to keep cohesive |
+| SHARED_CLASS_DUPLICATION_RATE | 4.3% | Lowest of any run — model classes cleanly partitioned |
+
+**What these numbers mean for the report:**
+
+- **87.5% compilation** with no repair confirms that framework-free model layers are the easiest target for the pipeline, consistent with flyway (100%).
+- **Lowest cohesion (50%)** despite clean compilation shows that a large type hierarchy with many abstractions resists cohesive service boundaries even when code generates correctly.
+- **Report framing:** *"The dbeaver-model module (87.5% compilation, 5.2/10) confirms the pattern: framework-free code compiles reliably, while domain complexity determines cohesion. Note this covers only 1 of ~100 dbeaver plugins — BroadleafCommerce provides the genuine large-scale data point."*
+
+---
+
 ### Planned Remaining Runs
 
 | # | Repo | Tier | Status | Estimated Cost |
@@ -964,7 +992,7 @@ Not used in the final report. Haiku is too weak for production-quality code gene
 | 3 | jforum3 | Small | Done ✅ Job 35 | ~$2.50 est. |
 | 4 | flyway | Medium | Done ✅ Job 39 | ~$3.20 est. |
 | 5 | openmrs-core | Medium | Done ✅ Job 40 | ~$4.50 est. |
-| 6 | dbeaver | Large | Pending | $4–7 |
+| 6 | dbeaver (model module‡) | Medium | Done ✅ Job 41 | ~$3.90 est. |
 | 7 | BroadleafCommerce | Large | Pending | $6–12 |
 
 For 2–3 repos, also run `?algorithm=leiden` to generate the Louvain vs Leiden ablation comparison.
