@@ -833,8 +833,11 @@ This section is updated as each benchmark run completes. All results below use t
 |---|---|---|---|---|---|---|---|---|---|---|
 | spring-petclinic | 28 | ~5 | 100% | 0%* | 33.8% | 0%* | — | — | — | — |
 | HikariCP | 34 | 44 | 75% | 25% | 14.4% | 4.2/10 | 79.4% | 2.79 | 81.8% | 13% |
+| jforum3 | 35 | 115 | 0% | 0% | 1.1% | 0%† | 83.3% | 2.0 | 85.7% | 3.4% |
+| flyway | 39 | — | 100% | 22.2% | 25.8% | 4.8/10 | 63.7% | 3.62 | 62.2% | 9.8% |
 
 *Job 28 pre-dates the coverage and LLM judge fixes. The 0% values there are bugs, not findings.
+†LLM judge requires GPT-4o key (not set); self-judge returns 0.
 
 ---
 
@@ -902,14 +905,38 @@ Not used in the final report. Haiku is too weak for production-quality code gene
 
 ---
 
+### Job 39 — flyway (Sonnet full, all fixes active)
+
+**Context:** flyway-core, 470 Java classes, ~100k LOC. Pure Java database migration DSL — no servlet or Spring framework coupling in the source, making it the cleanest infrastructure library run so far. Generated 9 services in 44 minutes, 324k tokens.
+
+| Metric | Value | Explanation |
+|---|---|---|
+| COMPILATION_SUCCESS | 100% | Best result yet — pure Java source means Spring Boot 3 generation works without framework mismatch |
+| COMPILATION_FIRST_ATTEMPT | 88.9% | 8/9 services compiled without repair — repair loop rarely needed |
+| COVERAGE | 22.2% | Consistent with other runs — Mockito fix working correctly |
+| API_COMPLETENESS | 25.8% | Higher than HikariCP (14.4%) — flyway's migration DSL has more recoverable method signatures |
+| LLM_JUDGE_SCORE | 4.8/10 | Self-judge mode (no GPT-4o); slightly above HikariCP (4.2) |
+| INTER_SERVICE_COUPLING | 63.7% | Lower than HikariCP (79.4%) — 9 services created more meaningful boundaries |
+| AVG_LCOM4 | 3.62 | Higher than HikariCP (2.79) — 9 heterogeneous services forced grouping of unrelated clusters |
+| PERFECT_COHESION_PCT | 62.2% | Lower than HikariCP (81.8%) — finer decomposition reduces per-class cohesion |
+| SHARED_CLASS_DUPLICATION_RATE | 9.8% | flyway-commons correctly extracted |
+
+**What these numbers mean for the report:**
+
+- **100% compilation** confirms that the technology-gap failure mode (jforum3) is framework-specific, not a general property of infrastructure libraries. flyway's pure Java codebase compiles cleanly.
+- **Coupling vs cohesion tradeoff:** 9 services gives lower coupling (63.7%) but also lower cohesion (62.2%) than 4-service HikariCP. This is a genuine architectural tension the report can discuss — more services = better separation but harder to keep each one internally cohesive.
+- **Report framing:** *"flyway (100% compilation, 63.7% coupling) confirms that infrastructure library success depends on framework compatibility, not domain complexity. The 9-service decomposition achieved better cross-service separation than HikariCP's 4 services at the cost of reduced cohesion — a reproducible tradeoff between granularity and coherence."*
+
+---
+
 ### Planned Remaining Runs
 
 | # | Repo | Tier | Status | Estimated Cost |
 |---|---|---|---|---|
 | 1 | spring-petclinic | Small | Done ✅ Job 28 | $1.43 |
 | 2 | HikariCP | Small (library) | Done ✅ Job 34 | ~$1.80 est. |
-| 3 | jforum3 | Small | Pending | $3–5 |
-| 4 | flyway | Medium | Pending | $2.50–4 |
+| 3 | jforum3 | Small | Done ✅ Job 35 | ~$2.50 est. |
+| 4 | flyway | Medium | Done ✅ Job 39 | ~$3.20 est. |
 | 5 | openmrs-core | Medium | Pending | $5–8 |
 | 6 | dbeaver | Large | Pending | $4–7 |
 | 7 | BroadleafCommerce | Large | Pending | $6–12 |
