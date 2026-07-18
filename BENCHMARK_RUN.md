@@ -323,6 +323,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | spring-petclinic | 28* | ~5 | 100% | — | 0%† | 33.8% | 0%† | — | — | — | — |
 | HikariCP | 34 | 44 | 75% | 62.5% | 25% | 14.4% | 4.2/10 | 79.4% | 2.79 | 81.8% | 13% |
 | jforum3 | 35 | 115 | 0% | 0% | 0% | 1.1% | 0%† | 83.3% | 2.0 | 85.7% | 3.4% |
+| flyway | 39 | — | 100% | 88.9% | 22.2% | 25.8% | 4.8/10 | 63.7% | 3.62 | 62.2% | 9.8% |
 
 \* Job 28 pre-dates coverage and LLM judge fixes — those 0% values are bugs, not findings.  
 † LLM judge requires GPT-4o key (not set); self-judge returns 0.
@@ -390,12 +391,37 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 
 ---
 
+### Job 39 — flyway Analysis
+
+**Profile:** Sonnet full, Louvain clustering, all fixes active (Neo4j clear, cluster-name schema, JSON recovery)
+**Repo:** flyway-core, 470 Java classes, ~100k LOC
+**Duration:** 44 min | **Tokens:** 324,226 | **Services:** 9
+**Date:** 2026-07-18
+
+**What the numbers say:**
+
+| Finding | Metric | Value | Interpretation |
+|---|---|---|---|
+| Full compilation | COMPILATION_SUCCESS | 100% | Pure Java library — no servlet/framework deps, Spring Boot generation works cleanly |
+| Strong first-pass | COMPILATION_FIRST_ATTEMPT | 88.9% | 8/9 services compiled without repair — repair loop almost unnecessary |
+| Real test coverage | COVERAGE | 22.2% | Consistent with HikariCP (25%) — Mockito fix working |
+| Better API recovery | API_COMPLETENESS | 25.8% | Higher than HikariCP (14.4%) — flyway's migration DSL has more recoverable method signatures |
+| Judge active | LLM_JUDGE_SCORE | 4.8/10 | Slightly above HikariCP (4.2) — self-judge mode, not cross-model |
+| Lower coupling | INTER_SERVICE_COUPLING | 63.7% | Better than HikariCP (79.4%) — 9 services created more meaningful boundaries |
+| Weaker cohesion | PERFECT_COHESION_PCT | 62.2% | Below HikariCP (81.8%) — 9 heterogeneous services (SQL parsing, telemetry, resource scanning) forced grouping of unrelated clusters |
+| Commons extracted | SHARED_CLASS_DUPLICATION | 9.8% | flyway-commons module correctly identified |
+
+**Report framing for flyway:**
+> *"flyway achieved 100% compilation — the highest of any infrastructure library run — because its classes are pure Java with no servlet or framework coupling, making Spring Boot 3 generation straightforward. The 63.7% inter-service coupling (vs HikariCP's 79.4%) demonstrates that finer-grained decomposition (9 services) produces more bounded contexts even on infrastructure code, though at the cost of lower cohesion (62.2%) as heterogeneous clusters are merged to meet the 3–8 service constraint."*
+
+---
+
 ### Pending Runs
 
 | Repo | Tier | Domain | Status | Algorithm plan |
 |---|---|---|---|---|
 | jforum3 | Small | Social forum, servlet-era | **Done (job 35)** | Louvain |
-| flyway | Medium | DB migration DSL | Next | Louvain only |
+| flyway | Medium | DB migration DSL | **Done (job 39)** | Louvain |
 | openmrs-core | Medium | Healthcare | Pending | Louvain + Leiden comparison |
 | dbeaver | Large | Desktop DB tool | Pending | Louvain only |
 | BroadleafCommerce | Large | E-commerce | Pending (most expensive) | Louvain only |
