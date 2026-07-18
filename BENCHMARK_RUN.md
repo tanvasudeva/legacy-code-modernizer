@@ -324,6 +324,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | HikariCP | 34 | 44 | 75% | 62.5% | 25% | 14.4% | 4.2/10 | 79.4% | 2.79 | 81.8% | 13% |
 | jforum3 | 35 | 115 | 0% | 0% | 0% | 1.1% | 0%† | 83.3% | 2.0 | 85.7% | 3.4% |
 | flyway | 39 | — | 100% | 88.9% | 22.2% | 25.8% | 4.8/10 | 63.7% | 3.62 | 62.2% | 9.8% |
+| openmrs-core | 40 | 62 | 66.7% | 66.7% | 44.4% | 3.9% | 5.4/10 | 73.9% | 4.10 | 54.6% | 9.3% |
 
 \* Job 28 pre-dates coverage and LLM judge fixes — those 0% values are bugs, not findings.  
 † LLM judge requires GPT-4o key (not set); self-judge returns 0.
@@ -416,13 +417,38 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 
 ---
 
+### Job 40 — openmrs-core Analysis
+
+**Profile:** Sonnet full, Louvain clustering, all fixes active
+**Repo:** openmrs-core/api, 1,192 Java classes, ~200k LOC (healthcare domain, Spring/JPA-heavy)
+**Duration:** 62 min | **Tokens:** 348,755 | **Services:** 9
+**Date:** 2026-07-18
+
+**What the numbers say:**
+
+| Finding | Metric | Value | Interpretation |
+|---|---|---|---|
+| Partial compilation | COMPILATION_SUCCESS | 66.7% | 6/9 compiled — 3 failed even after repair; healthcare domain uses complex Spring/JPA patterns |
+| Repair ineffective | COMPILATION_POST_REPAIR | 66.7% | Same as first-attempt — repair loop couldn't fix the 3 failing services |
+| Best coverage yet | COVERAGE | 44.4% | Highest of all runs — successfully compiled services have richer test-able logic |
+| Low API recovery | API_COMPLETENESS | 3.9% | Lowest of working runs — openmrs API uses many internal types not recoverable from signatures |
+| Best LLM judge | LLM_JUDGE_SCORE | 5.4/10 | Highest score yet — generated architecture semantically closest to source intent |
+| High coupling | INTER_SERVICE_COUPLING | 73.9% | Healthcare domain tightly integrated — patient, encounter, concept tightly coupled |
+| Weaker cohesion | PERFECT_COHESION_PCT | 54.6% | 9 heterogeneous services (HL7, obs, concept, admin) naturally less cohesive |
+| Commons extracted | SHARED_CLASS_DUPLICATION | 9.3% | openmrs-core-commons correctly identified |
+
+**Report framing for openmrs-core:**
+> *"openmrs-core (66.7% compilation, 5.4/10 LLM judge) illustrates the healthcare domain challenge: Spring/JPA complexity causes 3/9 services to fail compilation even after repair, but the 6 that succeed achieve the highest test coverage of any run (44.4%) and the best judge score (5.4/10), suggesting the pipeline produces architecturally sound decompositions for complex domains even when compilation is partial. The 73.9% inter-service coupling reflects genuine domain coupling — patient, encounter, and concept records are inherently co-dependent in an EMR system."*
+
+---
+
 ### Pending Runs
 
 | Repo | Tier | Domain | Status | Algorithm plan |
 |---|---|---|---|---|
 | jforum3 | Small | Social forum, servlet-era | **Done (job 35)** | Louvain |
 | flyway | Medium | DB migration DSL | **Done (job 39)** | Louvain |
-| openmrs-core | Medium | Healthcare | Pending | Louvain + Leiden comparison |
+| openmrs-core | Medium | Healthcare | **Done (job 40)** | Louvain |
 | dbeaver | Large | Desktop DB tool | Pending | Louvain only |
 | BroadleafCommerce | Large | E-commerce | Pending (most expensive) | Louvain only |
 
