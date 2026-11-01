@@ -1,6 +1,6 @@
 # Multi-Agent Legacy Code Modernizer
 
-An AI-powered research platform that automatically decomposes Java monolithic applications into Spring Boot 3 microservices using a coordinated pipeline of five specialised LLM agents. Built as a flagship Master's application project, it is empirically benchmarked against single-prompt baselines across 20 open-source Java monoliths.
+An AI-powered research platform that automatically decomposes Java monolithic applications into Spring Boot 3 microservices using a coordinated pipeline of five specialised LLM agents. Built as a flagship Master's application project, it is empirically benchmarked against single-prompt baselines on a suite of 20 open-source Java monoliths (6 evaluated so far — see [Current results](#current-results)).
 
 ---
 
@@ -403,6 +403,39 @@ GET    /api/eval/{jobId}                           Fetch stored metrics for dash
 
 ---
 
+## Current results
+
+Six of the 20 benchmark repos have been run end-to-end (Claude Sonnet 4.6, full profile) and compared against the single-prompt Claude baseline.
+
+| Repo | Job | Compile% | Coverage | API Comp. | LLM Judge | Coupling |
+|---|---|---|---|---|---|---|
+| spring-petclinic | 28* | 100% | 0%* | 33.8% | —* | — |
+| HikariCP | 34 | 75% | 25% | 14.4% | 4.2/10 | 79.4% |
+| jforum3 | 35 | 0% | 0% | 1.1% | — | 83.3% |
+| flyway | 39 | 100% | 22.2% | 25.8% | 4.8/10 | 63.7% |
+| openmrs-core | 40 | 66.7% | 44.4% | 3.9% | 5.4/10 | 73.9% |
+| dbeaver (model module) | 41 | 87.5% | 37.5% | 8.9% | 5.2/10 | 65.2% |
+
+\*Job 28 pre-dates the coverage and judge fixes; its 0%/missing values are pipeline bugs, not findings.
+
+| Metric | Multi-agent (avg) | Single-prompt Claude (avg) |
+|---|---|---|
+| Compilation success | **58%** | 10% |
+| Test coverage | **25%** | 0% |
+| API completeness | 13.3% | **21.3%** |
+| LLM judge score | 4.7/10 | 7.5/10 † |
+| Inter-service coupling | 73.2% | 3.5% † |
+
+Per-run analysis is in [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md) and [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md).
+
+### Limitations
+
+- **Judge scores are not directly comparable (†).** Multi-agent output is judged on generated *code* (`CODE_SYSTEM_PROMPT`, first 12k chars of all services), while baseline output is judged on its *decomposition plan* (`PLAN_SYSTEM_PROMPT`). Baseline coupling is likewise measured on mostly non-compilable stubs. A same-rubric re-evaluation is planned.
+- **No cross-model judging yet.** No OpenAI key was available, so `CrossModelJudge` ran in degraded mode — Claude judged Claude output for both systems — and the GPT-4o baseline was skipped.
+- **Partial scope.** n = 6, too small for the planned Wilcoxon tests; the dbeaver run covers only the `org.jkiss.dbeaver.model` module, and BroadleafCommerce (the large-tier repo) is still pending.
+
+---
+
 ## Test suite
 
 | Module | Unit tests |
@@ -433,7 +466,7 @@ cd orchestrator && mvn spring-boot:run
 
 # 4. Open the dashboard
 open http://localhost:5173        # Vite dev server (npm run dev inside frontend/)
-# or use the API directly via requests.http
+# or use the API directly via docs/requests.http
 ```
 
 **Run the full benchmark pipeline:**
@@ -463,7 +496,7 @@ npm install
 npm run dev          # http://localhost:5173 — proxies /api to localhost:8080
 ```
 
-All HTTP examples are in `requests.http` (IntelliJ HTTP Client format).
+All HTTP examples are in `docs/requests.http` (IntelliJ HTTP Client format).
 
 ---
 
@@ -498,7 +531,7 @@ legacy-code-modernizer/
 ├── scripts/                    Python: Louvain, CodeBERT indexing,
 │                               benchmark runner, statistical analysis
 ├── docker-compose.yml          Postgres 16, Redis 7, Neo4j 5, Qdrant 1.9
-└── requests.http               All API examples (IntelliJ HTTP Client)
+└── docs/                       Project guide, benchmarking guide, API examples (requests.http)
 ```
 
 ---

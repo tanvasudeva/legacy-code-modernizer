@@ -3,14 +3,26 @@ target/
 *.class
 
 # Benchmarks (cloned repos)
-benchmarks/
+benchmarks/*
+!benchmarks/README.md
 
-# IDE — ignore workspace state but track shared run configs
+# Generated run output (bundles, per-job results)
+orchestrator/results/
+*.zip
+
+# Frontend build / cache
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE / editor / assistant tooling
 .idea/
-!.idea/runConfigurations/
 *.iml
+.vscode/
+.claude/
 
 # Env / secrets
+.env
 *.env
 application-local.properties
 
@@ -21,6 +33,3 @@ application-local.properties
 __pycache__/
 *.pyc
 *.pyo
-
-# Maven
-target/
