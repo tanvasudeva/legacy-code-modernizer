@@ -6,7 +6,7 @@ Everything you need to run the full evaluation tomorrow and get a results table.
 
 ## What the benchmark does
 
-Runs your full pipeline on each of 20 repos and measures 6 metrics against 2 baselines.
+Runs your full pipeline on each of 20 repos and measures 10 metrics against 2 baselines.
 At the end you get `results/analysis/analysis_report.md` — a Markdown table that goes
 directly into your SOP and README.
 
@@ -144,7 +144,7 @@ Baseline runs are faster than multi-agent (~5–15 min per repo per system).
 
 ---
 
-## Step 7 — Run evaluation (all 6 metrics, all systems)
+## Step 7 — Run evaluation (all 10 metrics, all systems)
 
 ```bash
 curl -s -X POST http://localhost:8080/api/eval/all | python3 -m json.tool

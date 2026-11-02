@@ -25,7 +25,7 @@ Point it at a Java source tree. It:
 7. **Tests** — JUnit 5 unit tests and MockMvc integration tests per service
 8. **Documents** — OpenAPI 3.0.3 YAML spec, Architecture Decision Record (MADR), migration runbook
 9. **Bundles** everything into a downloadable ZIP with a root multi-module pom.xml and docker-compose.yml
-10. **Evaluates** output against six metrics and compares to single-prompt baselines
+10. **Evaluates** output against ten metrics and compares to single-prompt baselines
 11. **Analyses** results statistically across 20 benchmark repos with Wilcoxon tests and effect-size reports
 
 ---
@@ -228,7 +228,7 @@ Two baselines using the **same single prompt** with no RAG, no multi-turn dialog
 
 ### Phase 4.3 — Metric Computation
 
-Six metrics computed for the multi-agent system and both baselines:
+Six headline metrics (of the ten in the [Metrics reference](#metrics-reference)), computed for the multi-agent system and both baselines:
 
 | Metric | Description | Direction |
 |---|---|---|
@@ -377,7 +377,7 @@ POST   /api/baseline/{repoName}/claude             Run Claude baseline only
 POST   /api/baseline/all                           Run all repos
 
 # Evaluation
-POST   /api/eval/{jobId}/multi-agent               Evaluate multi-agent run (all 6 metrics)
+POST   /api/eval/{jobId}/multi-agent               Evaluate multi-agent run (all 10 metrics)
 POST   /api/eval/{jobId}/baseline/{systemId}       Evaluate one baseline
 POST   /api/eval/{jobId}/all                       Evaluate all systems for job
 POST   /api/eval/all                               Evaluate all repos
@@ -430,7 +430,8 @@ Per-run analysis is in [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md) and [`do
 
 ### Limitations
 
-- **Judge scores are not directly comparable (†).** Multi-agent output is judged on generated *code* (`CODE_SYSTEM_PROMPT`, first 12k chars of all services), while baseline output is judged on its *decomposition plan* (`PLAN_SYSTEM_PROMPT`). Baseline coupling is likewise measured on mostly non-compilable stubs. A same-rubric re-evaluation is planned.
+- **Judge scores are not directly comparable (†).** Multi-agent output is judged on generated *code* (`CODE_SYSTEM_PROMPT`), truncated at 12,000 characters — for most repos that is at most the first generated service — while baseline output is judged on its *decomposition plan* (`PLAN_SYSTEM_PROMPT`). The score compares a plan to a program. Baseline coupling is likewise measured on mostly non-compilable stubs. A same-rubric re-evaluation is planned.
+- **No behavioural-equivalence check.** None of the metrics verifies that the generated services do what the original system did. `API_COMPLETENESS` only checks that original public method *names* reappear in the generated code — not their signatures or behaviour.
 - **No cross-model judging yet.** No OpenAI key was available, so `CrossModelJudge` ran in degraded mode — Claude judged Claude output for both systems — and the GPT-4o baseline was skipped.
 - **Partial scope.** n = 6, too small for the planned Wilcoxon tests; the dbeaver run covers only the `org.jkiss.dbeaver.model` module, and BroadleafCommerce (the large-tier repo) is still pending.
 
@@ -477,7 +478,7 @@ python3 scripts/run_benchmarks.py --base-url http://localhost:8080
 # Run baselines
 curl -X POST http://localhost:8080/api/baseline/all
 
-# Run evaluation (all 6 metrics, all systems)
+# Run evaluation (all 10 metrics, all systems)
 curl -X POST http://localhost:8080/api/eval/all
 
 # Statistical analysis (reads from DB)
