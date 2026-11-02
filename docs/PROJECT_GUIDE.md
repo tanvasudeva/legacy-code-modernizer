@@ -831,7 +831,7 @@ This section is updated as each benchmark run completes. All results below use t
 
 | Repo | Job | Clusters | Compile% | Coverage | API Comp. | LLM Judge | Coupling | LCOM4 | Cohesion% | Shared% |
 |---|---|---|---|---|---|---|---|---|---|---|
-| spring-petclinic | 28 | ~5 | 100% | 0%* | 33.8% | 0%* | — | — | — | — |
+| spring-petclinic | 28 | ~5 | 100% | 16.7% | 33.8% | 0%* | 88.9% | — | — | — |
 | HikariCP | 34 | 44 | 75% | 25% | 14.4% | 4.2/10 | 79.4% | 2.79 | 81.8% | 13% |
 | jforum3 | 35 | 115 | 0% | 0% | 1.1% | 0%† | 83.3% | 2.0 | 85.7% | 3.4% |
 | flyway | 39 | — | 100% | 22.2% | 25.8% | 4.8/10 | 63.7% | 3.62 | 62.2% | 9.8% |
@@ -851,7 +851,7 @@ This section is updated as each benchmark run completes. All results below use t
 | Metric | Value | Explanation |
 |---|---|---|
 | COMPILATION_SUCCESS | 100% | Sonnet is strong enough to generate compiling code even without hints |
-| COVERAGE | 0% | Bug: @WebMvcTest tests require Spring context — fail in isolated temp dir |
+| COVERAGE | 16.7% | Value stored in `eval_metrics`. Earlier notes recorded 0%, attributed to @WebMvcTest tests needing a Spring context |
 | API_COMPLETENESS | 33.8% | No real method signatures given — LLM invented generic CRUD methods |
 | LLM_JUDGE_SCORE | 0% | CrossModelJudge used System.getenv() — API key not visible at JVM startup |
 | Cost | $1.43 | 27 minutes on spring-petclinic |
@@ -1048,21 +1048,23 @@ All 6 completed repos run against `single-prompt-claude` (claude-sonnet-4-6, up 
 
 | Metric | Multi-Agent (avg) | Single-Prompt (avg) | Winner |
 |---|---|---|---|
-| COMPILATION_SUCCESS | **58%** | 10% | 🏆 Multi-agent |
-| COVERAGE | **25%** | 0% | 🏆 Multi-agent |
-| API_COMPLETENESS | 13.3% | **21.3%** | 🏆 Single-prompt |
-| LLM_JUDGE_SCORE | 4.7/10 | **7.5/10** | 🏆 Single-prompt |
-| INTER_SERVICE_COUPLING | 73.2% | **3.5%** | 🏆 Single-prompt |
+| COMPILATION_SUCCESS | **71.5%** | 10.4% | 🏆 Multi-agent |
+| COVERAGE | **24.3%** | 0% | 🏆 Multi-agent |
+| API_COMPLETENESS | 14.7% | **21.3%** | 🏆 Single-prompt |
+| LLM_JUDGE_SCORE | 4.9/10 (n = 4) | **7.4/10** | 🏆 Single-prompt |
+| INTER_SERVICE_COUPLING | 75.7% | **3.4%** | 🏆 Single-prompt |
+
+> Averages recomputed from `eval_metrics` (jobs 28, 34, 35, 39, 40, 41; latest valid evaluation per job). Earlier versions of this table cited 58% / 25% / 4.7 / 7.5 from a partial snapshot. The judge scores are not directly comparable — see Limitations in the README.
 
 ### Key Insight for the Report
 
-Single-prompt scores **7.2–7.8/10** on architecture quality vs multi-agent's **4.2–5.4/10**, but produces **zero test coverage** and mostly non-compilable code. Multi-agent inverts this: **58% avg compilation, 25% coverage**, at the cost of architectural cohesion.
+Single-prompt scores **7.2–7.8/10** on architecture quality vs multi-agent's **4.2–5.4/10**, but produces **zero test coverage** and mostly non-compilable code. Multi-agent inverts this: **71.5% avg compilation, 24.3% coverage**, at the cost of architectural cohesion.
 
 The distinction is fundamental:
 - **Single-prompt** = design plan (good decomposition described in markdown + stubs, not standalone Spring Boot projects)
 - **Multi-agent** = deployable artifacts (proper Maven projects, tests, repair loop — lower LLM scores because executability constraints trade off against elegance)
 
-> *"The single-prompt baseline consistently outscores the multi-agent pipeline on the LLM judge (7.5 vs 4.7) yet produces zero runnable code. The multi-agent system inverts this: orchestrated graph analysis, RAG retrieval, and iterative repair bridge the gap between LLM architectural reasoning and production-ready code generation — the core contribution of this work."*
+> *"The single-prompt baseline consistently outscores the multi-agent pipeline on the LLM judge (7.4 vs 4.9) yet produces mostly non-compilable code (10.4% vs 71.5%). The multi-agent system inverts this: orchestrated graph analysis, RAG retrieval, and iterative repair bridge the gap between LLM architectural reasoning and production-ready code generation — the core contribution of this work."*
 
 ---
 

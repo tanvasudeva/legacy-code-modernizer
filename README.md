@@ -409,22 +409,24 @@ Six of the 20 benchmark repos have been run end-to-end (Claude Sonnet 4.6, full 
 
 | Repo | Job | Compile% | Coverage | API Comp. | LLM Judge | Coupling |
 |---|---|---|---|---|---|---|
-| spring-petclinic | 28* | 100% | 0%* | 33.8% | —* | — |
+| spring-petclinic | 28 | 100% | 16.7% | 33.8% | —* | 88.9% |
 | HikariCP | 34 | 75% | 25% | 14.4% | 4.2/10 | 79.4% |
-| jforum3 | 35 | 0% | 0% | 1.1% | — | 83.3% |
+| jforum3 | 35 | 0% | 0% | 1.1% | —* | 83.3% |
 | flyway | 39 | 100% | 22.2% | 25.8% | 4.8/10 | 63.7% |
 | openmrs-core | 40 | 66.7% | 44.4% | 3.9% | 5.4/10 | 73.9% |
 | dbeaver (model module) | 41 | 87.5% | 37.5% | 8.9% | 5.2/10 | 65.2% |
 
-\*Job 28 pre-dates the coverage and judge fixes; its 0%/missing values are pipeline bugs, not findings.
+\*No judge model was available when jobs 28 and 35 were evaluated; the stored 0 is a missing value, not a score.
 
 | Metric | Multi-agent (avg) | Single-prompt Claude (avg) |
 |---|---|---|
-| Compilation success | **58%** | 10% |
-| Test coverage | **25%** | 0% |
-| API completeness | 13.3% | **21.3%** |
-| LLM judge score | 4.7/10 | 7.5/10 † |
-| Inter-service coupling | 73.2% | 3.5% † |
+| Compilation success | **71.5%** | 10.4% |
+| Test coverage | **24.3%** | 0% |
+| API completeness | 14.7% | **21.3%** |
+| LLM judge score | 4.9/10 (n = 4) | 7.4/10 † |
+| Inter-service coupling | 75.7% | 3.4% † |
+
+All values are computed from the `eval_metrics` table, one run per repo (the jobs listed above), using the latest valid evaluation where a job was evaluated more than once. Earlier write-ups cited 58% compilation and judge scores of 4.7 vs 7.5, taken from a partial snapshot; the figures above supersede them.
 
 Per-run analysis is in [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md) and [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md).
 
@@ -432,7 +434,8 @@ Per-run analysis is in [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md) and [`do
 
 - **Judge scores are not directly comparable (†).** Multi-agent output is judged on generated *code* (`CODE_SYSTEM_PROMPT`), truncated at 12,000 characters — for most repos that is at most the first generated service — while baseline output is judged on its *decomposition plan* (`PLAN_SYSTEM_PROMPT`). The score compares a plan to a program. Baseline coupling is likewise measured on mostly non-compilable stubs. A same-rubric re-evaluation is planned.
 - **No behavioural-equivalence check.** None of the metrics verifies that the generated services do what the original system did. `API_COMPLETENESS` only checks that original public method *names* reappear in the generated code — not their signatures or behaviour.
-- **No cross-model judging yet.** No OpenAI key was available, so `CrossModelJudge` ran in degraded mode — Claude judged Claude output for both systems — and the GPT-4o baseline was skipped.
+- **No cross-model judging yet.** No OpenAI key was available, so `CrossModelJudge` ran in degraded mode — Claude judged Claude output for both systems — and the GPT-4o baseline was skipped. (`eval_metrics.judge_model` still records the *intended* judge, `gpt-4o`, for these rows.)
+- **Service-naming leak.** The `ArchitectAgent` prompt uses `owner-service` / `vet-service` as naming examples, and the model reuses them for unrelated clusters. In HikariCP (job 34) and jforum3 (job 35) this produced final services named after spring-petclinic, with petclinic-style entities (`Pet`, `Visit`) in the generated code, which affects those runs' results.
 - **Partial scope.** n = 6, too small for the planned Wilcoxon tests; the dbeaver run covers only the `org.jkiss.dbeaver.model` module, and BroadleafCommerce (the large-tier repo) is still pending.
 
 ---

@@ -320,7 +320,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 
 | Repo | Job | Clusters | Compile% | 1st-Attempt | Coverage | API Comp. | LLM Judge | Coupling | AVG LCOM4 | Cohesion% | Shared% |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| spring-petclinic | 28* | ~5 | 100% | — | 0%† | 33.8% | 0%† | — | — | — | — |
+| spring-petclinic | 28* | ~5 | 100% | — | 16.7% | 33.8% | 0%† | 88.9% | — | — | — |
 | HikariCP | 34 | 44 | 75% | 62.5% | 25% | 14.4% | 4.2/10 | 79.4% | 2.79 | 81.8% | 13% |
 | jforum3 | 35 | 115 | 0% | 0% | 0% | 1.1% | 0%† | 83.3% | 2.0 | 85.7% | 3.4% |
 | flyway | 39 | — | 100% | 88.9% | 22.2% | 25.8% | 4.8/10 | 63.7% | 3.62 | 62.2% | 9.8% |
@@ -504,11 +504,13 @@ GPT-4o baseline skipped (no OpenAI key).
 
 | Repo | Metric | Multi-Agent | Single-Prompt | Winner |
 |---|---|---|---|---|
-| (all repos avg) | COMPILATION_SUCCESS | **58%** | 10% | 🏆 Multi-agent |
-| (all repos avg) | COVERAGE | **25%** | 0% | 🏆 Multi-agent |
-| (all repos avg) | API_COMPLETENESS | 13.3% | **21.3%** | 🏆 Single-prompt |
-| (all repos avg) | LLM_JUDGE_SCORE | 4.7/10 | **7.5/10** | 🏆 Single-prompt |
-| (all repos avg) | INTER_SERVICE_COUPLING | 73.2% | **3.5%** | 🏆 Single-prompt |
+| (all repos avg) | COMPILATION_SUCCESS | **71.5%** | 10.4% | 🏆 Multi-agent |
+| (all repos avg) | COVERAGE | **24.3%** | 0% | 🏆 Multi-agent |
+| (all repos avg) | API_COMPLETENESS | 14.7% | **21.3%** | 🏆 Single-prompt |
+| (all repos avg) | LLM_JUDGE_SCORE | 4.9/10 (n = 4) | **7.4/10** | 🏆 Single-prompt |
+| (all repos avg) | INTER_SERVICE_COUPLING | 75.7% | **3.4%** | 🏆 Single-prompt |
+
+> Averages recomputed from `eval_metrics` (jobs 28, 34, 35, 39, 40, 41; latest valid evaluation per job). Earlier versions of this table cited 58% / 25% / 4.7 / 7.5 from a partial snapshot. The judge scores are not directly comparable — see Limitations in the README.
 
 ### Interpretation
 
@@ -519,4 +521,4 @@ The key distinction:
 - Multi-agent generates *deployable artifacts* — proper Maven projects with pom.xml, tests, and compilation repair; lower judge scores because the LLM must trade architectural elegance for executability constraints
 
 **Report framing:**
-> *"The single-prompt baseline (LLM judge: 7.5/10 avg) consistently outscores the multi-agent pipeline (4.7/10) on architectural quality, yet produces zero test coverage and non-compilable code across all 6 repos. The multi-agent system inverts this: 58% avg compilation with 25% test coverage at the cost of lower architectural cohesion. This confirms the core thesis — orchestrated multi-agent pipelines with graph analysis, RAG, and repair loops are necessary to bridge the gap between LLM architectural reasoning and production-ready code generation."*
+> *"The single-prompt baseline (LLM judge: 7.4/10 avg) consistently outscores the multi-agent pipeline (4.9/10) on architectural quality, yet produces zero test coverage and mostly non-compilable code (10.4% avg compilation). The multi-agent system inverts this: 71.5% avg compilation with 24.3% test coverage at the cost of lower architectural cohesion. This confirms the core thesis — orchestrated multi-agent pipelines with graph analysis, RAG, and repair loops are necessary to bridge the gap between LLM architectural reasoning and production-ready code generation."*
