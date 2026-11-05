@@ -80,8 +80,9 @@ class TestWriterAgentTest {
             <path>src/test/java/com/modernized/ownerservice/controller/OwnerControllerTest.java</path>
             <content>
             package com.modernized.ownerservice.controller;
-            import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-            @WebMvcTest(Object.class)
+            import org.junit.jupiter.api.extension.ExtendWith;
+            import org.mockito.junit.jupiter.MockitoExtension;
+            @ExtendWith(MockitoExtension.class)
             class OwnerControllerTest {}
             </content>
             </file>

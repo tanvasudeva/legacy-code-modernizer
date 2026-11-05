@@ -29,7 +29,8 @@ import java.util.regex.Pattern;
  * <p>Given the source files of a generated Spring Boot microservice, produces:
  * <ul>
  *   <li>{@code {Entity}ServiceTest.java} — Mockito unit tests for the service layer</li>
- *   <li>{@code {Entity}ControllerTest.java} — {@code @WebMvcTest} MockMvc tests for the controller</li>
+ *   <li>{@code {Entity}ControllerTest.java} — Mockito unit tests for the controller, instantiated
+ *       directly (no Spring context, so the tests run in an isolated compile sandbox)</li>
  *   <li>An updated {@code pom.xml} with {@code spring-boot-starter-test} and {@code h2} deps</li>
  * </ul>
  *
@@ -245,7 +246,7 @@ public class TestWriterAgent {
 
         sb.append("=== Service layer (write Mockito unit tests for this) ===\n")
                 .append(serviceSource).append("\n\n");
-        sb.append("=== REST controller (write @WebMvcTest tests for this) ===\n")
+        sb.append("=== REST controller (write Mockito unit tests for this, no Spring context) ===\n")
                 .append(controllerSource).append("\n\n");
         sb.append("=== Entity class (use for building test fixtures) ===\n")
                 .append(entitySource).append("\n\n");

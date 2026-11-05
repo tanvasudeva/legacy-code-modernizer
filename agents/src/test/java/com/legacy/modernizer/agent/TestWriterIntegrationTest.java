@@ -156,7 +156,7 @@ class TestWriterIntegrationTest {
     }
 
     @Test
-    void generatedControllerTestUsesWebMvcTest() {
+    void generatedControllerTestUsesPlainMockito() {
         ServiceGenerationResult svcResult = serviceGeneratorAgent.generate(
                 1L, OWNER_BOUNDARY, PETCLINIC_SNIPPETS);
         Map<String, String> sources = toMap(svcResult);
@@ -172,7 +172,7 @@ class TestWriterIntegrationTest {
         String ctrlTest = testResult.files().stream()
                 .filter(f -> f.filePath().contains("ControllerTest.java"))
                 .findFirst().orElseThrow().content();
-        assertThat(ctrlTest).contains("@WebMvcTest").contains("MockMvc");
+        assertThat(ctrlTest).contains("MockitoExtension").doesNotContain("@WebMvcTest");
     }
 
     // ------------------------------------------------------------------
