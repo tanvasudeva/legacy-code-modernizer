@@ -49,7 +49,7 @@ Input: Java source tree
 │  Redis Streams       async agent task queue                    │
 │  ArchitectAgent      LLM → DDD service boundaries              │
 │  DD2 SharedLibraryDetector → {repo}-commons boundary          │
-│  RefactorerAgent     LLM → per-class modernisation             │
+│  RefactorerAgent     per-class rewrite (experimental, unused)  │
 │  RAG (Qdrant)        CodeBERT embeddings for per-agent context │
 └──────────────────────────────┬─────────────────────────────────┘
                                │
@@ -149,9 +149,9 @@ LLM calls go through [LangChain4j](https://github.com/langchain4j/langchain4j) (
 - **Python RAG pipeline**: `method_chunker.py` → `embedder.py` (CodeBERT) → `qdrant_indexer.py`
 - **`RagRetriever`** — queries Qdrant for top-k semantically relevant method chunks; used by all generation agents
 
-### Phase 2.5 — Refactorer Agent
+### Phase 2.5 — Refactorer Agent (experimental)
 
-- **`RefactorerAgent`** transforms individual legacy classes — modernises JPA annotations, migrates `javax.*` → `jakarta.*`, enforces constructor injection, removes field `@Autowired`
+- **`RefactorerAgent`** *(experimental — not used by the benchmark pipeline)* transforms individual legacy classes — modernises JPA annotations, migrates `javax.*` → `jakarta.*`, enforces constructor injection, removes field `@Autowired`
 
 ### Phase 3.1 — Service Generator Agent
 

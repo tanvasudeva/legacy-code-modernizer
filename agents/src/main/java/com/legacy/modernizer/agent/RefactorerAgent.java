@@ -36,6 +36,10 @@ import java.util.Map;
  *   <li>Stores the transformed code as {@link Artifact}(TRANSFORMED).</li>
  *   <li>Marks the {@link AgentTask} COMPLETED with token usage, or FAILED on error.</li>
  * </ol>
+ *
+ * <p><b>Experimental.</b> Not part of the benchmark pipeline, which generates new
+ * services via {@link ServiceGeneratorAgent} instead. Only reachable through the
+ * Redis refactorer stream, which nothing currently publishes to.
  */
 @Component
 public class RefactorerAgent {

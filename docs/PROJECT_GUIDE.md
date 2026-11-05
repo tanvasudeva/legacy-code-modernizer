@@ -423,7 +423,7 @@ After fixing: tests are plain Java objects. No application context needed. A `@B
 ### RefactorerAgent
 **File:** `agents/src/main/java/com/legacy/modernizer/agent/RefactorerAgent.java`
 
-**What it does:** An older/alternative agent that refactors existing code rather than generating new code from scratch. Used in the Redis stream-based async flow (not the benchmark pipeline). Can be triggered via `POST /api/jobs/{id}/refactor`.
+**What it does:** An experimental agent that refactors existing classes in place rather than generating new services. It is wired to a Redis stream consumer (`RefactorerConsumer`), but nothing in the current pipeline publishes to that stream, so it is not used in the benchmark.
 
 ---
 
@@ -1109,6 +1109,7 @@ The distinction is fundamental:
 - Maven 3.9+
 - PostgreSQL 16 running on localhost:5432 (database: `lcm`, user: `postgres`, password: `postgres`)
 - Neo4j running on localhost:7687 (user: `neo4j`, password: `neo4j_password`)
+- These are local development defaults; set `POSTGRES_PASSWORD` / `NEO4J_PASSWORD` to override them in both `docker-compose.yml` and the application
 - Redis running on localhost:6379
 - Qdrant running on localhost:6333
 - Python 3.11 with `python-louvain` and `networkx` installed
@@ -1198,7 +1199,7 @@ curl -X POST http://localhost:8080/api/eval/32/baseline/single-prompt-claude
 | `CompilationRepairService.java` | Compile-fix loop: runs mvn compile, feeds errors back to LLM, retries |
 | `TestWriterAgent.java` | LLM agent: generated service → JUnit 5 / Mockito test suite |
 | `DocGenAgent.java` | LLM agent: service → OpenAPI spec + ADR + Runbook |
-| `RefactorerAgent.java` | Alternative agent for refactoring (not used in benchmark pipeline) |
+| `RefactorerAgent.java` | Experimental per-class refactoring agent (not used in benchmark pipeline) |
 
 ### rag module
 
