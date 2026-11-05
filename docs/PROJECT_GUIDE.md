@@ -877,7 +877,7 @@ This section is updated as each benchmark run completes. All results below use t
 | PERFECT_COHESION_PCT | 81.8% | 81.8% of classes still have LCOM4=1 individually |
 | SHARED_CLASS_DUPLICATION_RATE | 13% | Low — HikariCP lacks shared domain entities to extract |
 
-**What these numbers mean for the report:**
+**Interpretation:**
 
 - **INTER_SERVICE_COUPLING 79.4%** is the headline number. A well-decomposed system should be 10–30%. At 79.4%, nearly every generated service call crosses a boundary — confirming that HikariCP's internals do not map to domain-separated microservices. This is expected and documented: *"HikariCP's high inter-service coupling (0.79) confirms that domain-driven decomposition degrades predictably on infrastructure libraries lacking business-capability boundaries."*
 
@@ -909,7 +909,7 @@ This section is updated as each benchmark run completes. All results below use t
 | PERFECT_COHESION_PCT | 85.7% | Generated classes are internally coherent despite poor service separation |
 | SHARED_CLASS_DUPLICATION_RATE | 3.4% | Commons detection working correctly |
 
-**What these numbers mean for the report:**
+**Interpretation:**
 
 - **0% compilation is the technology-gap failure mode**, not a decomposition failure. The pipeline's architecture layer succeeds (85.7% cohesion, structurally sound boundaries) but the generation layer cannot bridge a 15-year framework gap in a single pass. This is a distinct and reportable finding.
 
@@ -917,7 +917,7 @@ This section is updated as each benchmark run completes. All results below use t
 
 - **85.7% cohesion despite 0% compilation** — proves that the decomposition quality metric (LCOM4) and the compilation metric are measuring different things. A system can be structurally decomposed correctly but still fail to compile if the generation target framework doesn't match the source.
 
-- **Report framing:** *"jforum3 demonstrates the technology-gap failure mode: the pipeline correctly decomposes the architecture (85.7% perfect cohesion) but cannot generate compilable Spring Boot code from servlet-era source. This finding is interpretable and expected — it sets a boundary condition for multi-agent modernisation."*
+- **Summary:** *"jforum3 demonstrates the technology-gap failure mode: the pipeline correctly decomposes the architecture (85.7% perfect cohesion) but cannot generate compilable Spring Boot code from servlet-era source. This finding is interpretable and expected — it sets a boundary condition for multi-agent modernisation."*
 
 ---
 
@@ -954,11 +954,11 @@ Not used in the final report. Haiku is too weak for production-quality code gene
 | PERFECT_COHESION_PCT | 62.2% | Lower than HikariCP (81.8%) — finer decomposition reduces per-class cohesion |
 | SHARED_CLASS_DUPLICATION_RATE | 9.8% | flyway-commons correctly extracted |
 
-**What these numbers mean for the report:**
+**Interpretation:**
 
 - **100% compilation** confirms that the technology-gap failure mode (jforum3) is framework-specific, not a general property of infrastructure libraries. flyway's pure Java codebase compiles cleanly.
 - **Coupling vs cohesion tradeoff:** 9 services gives lower coupling (63.7%) but also lower cohesion (62.2%) than 4-service HikariCP. This is a genuine architectural tension the report can discuss — more services = better separation but harder to keep each one internally cohesive.
-- **Report framing:** *"flyway (100% compilation, 63.7% coupling) confirms that infrastructure library success depends on framework compatibility, not domain complexity. The 9-service decomposition achieved better cross-service separation than HikariCP's 4 services at the cost of reduced cohesion — a reproducible tradeoff between granularity and coherence."*
+- **Summary:** *"flyway (100% compilation, 63.7% coupling) confirms that infrastructure library success depends on framework compatibility, not domain complexity. The 9-service decomposition achieved better cross-service separation than HikariCP's 4 services at the cost of reduced cohesion — a reproducible tradeoff between granularity and coherence."*
 
 ---
 
@@ -978,12 +978,12 @@ Not used in the final report. Haiku is too weak for production-quality code gene
 | PERFECT_COHESION_PCT | 54.6% | Lowest yet — HL7, obs, concept, admin naturally less cohesive |
 | SHARED_CLASS_DUPLICATION_RATE | 9.3% | openmrs-core-commons correctly extracted |
 
-**What these numbers mean for the report:**
+**Interpretation:**
 
 - **Best judge score (5.4/10)** despite partial compilation — confirms the pipeline produces architecturally sound decompositions even on complex domains, not just easy ones.
 - **44.4% coverage** is the highest yet, showing that successfully compiled services for a test-rich healthcare domain yield meaningful coverage.
 - **3 compilation failures** are unrecoverable — the repair loop hit its 3-attempt limit. These reflect genuine Spring/JPA complexity (complex generics, annotation-driven proxies) that the LLM can't fully reconstruct without the original framework context.
-- **Report framing:** *"openmrs-core (66.7% compilation, 5.4/10 LLM judge) shows that domain complexity and compilation success are independent axes: the pipeline produces its best-rated architecture on the most complex repo, even as 3 services remain uncompilable due to Spring/JPA framework coupling. This supports using LLM judge score as the primary quality metric alongside compilation rate."*
+- **Summary:** *"openmrs-core (66.7% compilation, 5.4/10 LLM judge) shows that domain complexity and compilation success are independent axes: the pipeline produces its best-rated architecture on the most complex repo, even as 3 services remain uncompilable due to Spring/JPA framework coupling. This supports using LLM judge score as the primary quality metric alongside compilation rate."*
 
 ---
 
@@ -1005,11 +1005,11 @@ Not used in the final report. Haiku is too weak for production-quality code gene
 | PERFECT_COHESION_PCT | 50.0% | Lowest yet — data sources, connections, drivers, metadata hard to keep cohesive |
 | SHARED_CLASS_DUPLICATION_RATE | 4.3% | Lowest of any run — model classes cleanly partitioned |
 
-**What these numbers mean for the report:**
+**Interpretation:**
 
 - **87.5% compilation** with no repair confirms that framework-free model layers are the easiest target for the pipeline, consistent with flyway (100%).
 - **Lowest cohesion (50%)** despite clean compilation shows that a large type hierarchy with many abstractions resists cohesive service boundaries even when code generates correctly.
-- **Report framing:** *"The dbeaver-model module (87.5% compilation, 5.2/10) confirms the pattern: framework-free code compiles reliably, while domain complexity determines cohesion. Note this covers only 1 of ~100 dbeaver plugins — BroadleafCommerce provides the genuine large-scale data point."*
+- **Summary:** *"The dbeaver-model module (87.5% compilation, 5.2/10) confirms the pattern: framework-free code compiles reliably, while domain complexity determines cohesion. Note this covers only 1 of ~100 dbeaver plugins — BroadleafCommerce provides the genuine large-scale data point."*
 
 ---
 
@@ -1056,7 +1056,7 @@ All 6 completed repos run against `single-prompt-claude` (claude-sonnet-4-6, up 
 
 > Averages recomputed from `eval_metrics` (jobs 28, 34, 35, 39, 40, 41; latest valid evaluation per job). Earlier versions of this table cited 58% / 25% / 4.7 / 7.5 from a partial snapshot. The judge scores are not directly comparable — see Limitations in the README.
 
-### Key Insight for the Report
+### Key Insight
 
 Single-prompt scores **7.2–7.8/10** on architecture quality vs multi-agent's **4.2–5.4/10**, but produces **zero test coverage** and mostly non-compilable code. Multi-agent inverts this: **71.5% avg compilation, 24.3% coverage**, at the cost of architectural cohesion.
 

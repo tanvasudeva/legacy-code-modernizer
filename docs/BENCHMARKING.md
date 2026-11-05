@@ -7,8 +7,8 @@ Everything you need to run the full evaluation tomorrow and get a results table.
 ## What the benchmark does
 
 Runs your full pipeline on each of 20 repos and measures 10 metrics against 2 baselines.
-At the end you get `results/analysis/analysis_report.md` — a Markdown table that goes
-directly into your SOP and README.
+At the end you get `results/analysis/analysis_report.md` — a Markdown results table plus LaTeX
+and JSON exports.
 
 **Time estimate:** 4–8 hours for all 20 repos end-to-end (LLM latency dominates).
 Run petclinic first (~15 min) to verify everything works before leaving it overnight.
@@ -178,7 +178,7 @@ Outputs written to `results/analysis/`:
 | File | Contents |
 |---|---|
 | `analysis_report.md` | Main results table + repair analysis + cohesion/coupling section + per-repo breakdown |
-| `analysis_report.tex` | LaTeX booktabs table — paste into your SOP/paper |
+| `analysis_report.tex` | LaTeX booktabs results table |
 | `summary_stats.json` | Mean ± std per metric × system |
 | `wilcoxon_tests.json` | W statistic and p-value per comparison |
 | `plots/` | Per-metric boxplots, per-repo heatmap, LOC scatter with regression |
@@ -308,7 +308,6 @@ If multi-agent compilation is below 0.50 after repair, check that the repair loo
 - [ ] `results/analysis/plots/` contains at least 4 PNG files
 - [ ] Wilcoxon p-values are present (not all `n/a`) — need ≥ 4 repos with both systems measured
 - [ ] Dashboard shows all 20 jobs at DONE status
-- [ ] Copy `results/analysis/analysis_report.tex` table into your SOP
 
 ---
 
@@ -350,7 +349,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | Library API difficulty | API_COMPLETENESS | 14.4% | Internal APIs are complex and non-standard — LLM can't reproduce them |
 | Good class cohesion | PERFECT_COHESION_PCT | 81.8% | Generated classes internally cohesive despite poor service separation |
 
-**Report framing for HikariCP:**
+**Summary for HikariCP:**
 > *"We intentionally included HikariCP to probe the system's behaviour on infrastructure libraries lacking explicit business capabilities. The 44-cluster fragmentation (modularity=0.28, vs petclinic's ~5 clusters) and high inter-service coupling (0.79) confirm that domain-driven decomposition degrades predictably when no bounded contexts exist. This is a finding, not a failure: the system correctly reflects the structural properties of the input."*
 
 ---
@@ -374,7 +373,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | Good class cohesion | PERFECT_COHESION_PCT | 85.7% | Generated classes are internally coherent — decomposition quality is sound |
 | Low shared duplication | SHARED_CLASS_DUPLICATION | 3.4% | Commons detection working correctly |
 
-**Report framing for jforum3:**
+**Summary for jforum3:**
 > *"jforum3 (servlet-era Java EE, 347 classes, 115 clusters) produced 0% compilation — not because the decomposition was poor (85.7% perfect cohesion, structurally sound service boundaries) but because the code generator targets Spring Boot 3 while jforum3's build classpath is pre-Spring. This is the technology-gap failure mode: the pipeline's architecture layer succeeds but the generation layer cannot bridge a 15-year framework gap in a single pass. The finding is interpretable: multi-agent decomposition quality holds; compilation viability requires closer alignment between source-era frameworks and the generation target."*
 
 ---
@@ -414,7 +413,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | Weaker cohesion | PERFECT_COHESION_PCT | 62.2% | Below HikariCP (81.8%) — 9 heterogeneous services (SQL parsing, telemetry, resource scanning) forced grouping of unrelated clusters |
 | Commons extracted | SHARED_CLASS_DUPLICATION | 9.8% | flyway-commons module correctly identified |
 
-**Report framing for flyway:**
+**Summary for flyway:**
 > *"flyway achieved 100% compilation — the highest of any infrastructure library run — because its classes are pure Java with no servlet or framework coupling, making Spring Boot 3 generation straightforward. The 63.7% inter-service coupling (vs HikariCP's 79.4%) demonstrates that finer-grained decomposition (9 services) produces more bounded contexts even on infrastructure code, though at the cost of lower cohesion (62.2%) as heterogeneous clusters are merged to meet the 3–8 service constraint."*
 
 ---
@@ -439,7 +438,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | Weaker cohesion | PERFECT_COHESION_PCT | 54.6% | 9 heterogeneous services (HL7, obs, concept, admin) naturally less cohesive |
 | Commons extracted | SHARED_CLASS_DUPLICATION | 9.3% | openmrs-core-commons correctly identified |
 
-**Report framing for openmrs-core:**
+**Summary for openmrs-core:**
 > *"openmrs-core (66.7% compilation, 5.4/10 LLM judge) illustrates the healthcare domain challenge: Spring/JPA complexity causes 3/9 services to fail compilation even after repair, but the 6 that succeed achieve the highest test coverage of any run (44.4%) and the best judge score (5.4/10), suggesting the pipeline produces architecturally sound decompositions for complex domains even when compilation is partial. The 73.9% inter-service coupling reflects genuine domain coupling — patient, encounter, and concept records are inherently co-dependent in an EMR system."*
 
 ---
@@ -466,7 +465,7 @@ All runs use **Sonnet full profile** (claude-sonnet-4-6, 8192 tokens, 3 repair a
 | Weakest cohesion | PERFECT_COHESION_PCT | 50.0% | Lowest yet — 8 heterogeneous model services hard to keep cohesive |
 | Low duplication | SHARED_CLASS_DUPLICATION | 4.3% | Lowest duplication — model classes cleanly partitioned |
 
-**Report framing for dbeaver:**
+**Summary for dbeaver:**
 > *"The dbeaver-model module (87.5% compilation, 5.2/10 LLM judge) confirms that pure model/domain layers — free of UI and framework coupling — decompose cleanly. The 65.2% inter-service coupling and 50.0% cohesion reflect the inherent challenge of partitioning a large type hierarchy (data sources, connections, drivers, metadata) into bounded services. Note: this run covers only 1 of ~100 dbeaver plugins and does not represent large-scale pipeline performance."*
 
 ---
@@ -520,5 +519,5 @@ The key distinction:
 - Single-prompt generates a *design plan* — good architectural decompositions described in markdown + code stubs that don't compile as standalone Spring Boot projects
 - Multi-agent generates *deployable artifacts* — proper Maven projects with pom.xml, tests, and compilation repair; lower judge scores because the LLM must trade architectural elegance for executability constraints
 
-**Report framing:**
+**Summary:**
 > *"The single-prompt baseline (LLM judge: 7.4/10 avg) consistently outscores the multi-agent pipeline (4.9/10) on architectural quality, yet produces zero test coverage and mostly non-compilable code (10.4% avg compilation). The multi-agent system inverts this: 71.5% avg compilation with 24.3% test coverage at the cost of lower architectural cohesion. This confirms the core thesis — orchestrated multi-agent pipelines with graph analysis, RAG, and repair loops are necessary to bridge the gap between LLM architectural reasoning and production-ready code generation."*
