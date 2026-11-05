@@ -22,7 +22,7 @@ Point it at a Java source tree. It:
 4. **Extracts** shared utility classes used across boundaries into a `{repo}-commons` library (DD2)
 5. **Generates** a complete Spring Boot 3 microservice per context — entity, DTO, repository, service, controller, pom.xml
 6. **Repairs** any compilation errors by feeding `mvn compile` output back to the LLM (up to 3 iterations)
-7. **Tests** — JUnit 5 unit tests and MockMvc integration tests per service
+7. **Tests** — JUnit 5 + Mockito unit tests for the service and controller layers of each service (no Spring context needed)
 8. **Documents** — OpenAPI 3.0.3 YAML spec, Architecture Decision Record (MADR), migration runbook
 9. **Bundles** everything into a downloadable ZIP with a root multi-module pom.xml and docker-compose.yml
 10. **Evaluates** output against ten metrics and compares to single-prompt baselines
@@ -58,7 +58,7 @@ Input: Java source tree
 │  Phase 3 — Code Generation                                     │
 │  ServiceGeneratorAgent  → 7 files per microservice             │
 │  CompilationRepairService → feed errors back to LLM, retry ×3 │
-│  TestWriterAgent        → JUnit 5 + MockMvc tests              │
+│  TestWriterAgent        → JUnit 5 + Mockito tests              │
 │  DocGenAgent            → OpenAPI + ADR + Runbook              │
 │  BundleAssembler        → ZIP download (commons-first order)   │
 └──────────────────────────────┬─────────────────────────────────┘
@@ -92,6 +92,8 @@ Input: Java source tree
 | Redis | 7 | Async agent task queue (Redis Streams) |
 | Neo4j | 5.19 | Code dependency graph — Class nodes + CALLS / EXTENDS / IMPLEMENTS edges |
 | Qdrant | 1.9.4 | Vector store — CodeBERT embeddings for RAG retrieval |
+
+LLM calls go through [LangChain4j](https://github.com/langchain4j/langchain4j) (Anthropic Claude Sonnet 4.6 for the full profile, Claude Haiku 4.5 for cheap development runs, Ollama as a local fallback).
 
 ### Maven modules
 
@@ -167,7 +169,7 @@ Input: Java source tree
 
 ### Phase 3.3 — Test Writer Agent
 
-- **`TestWriterAgent`** reads generated `SERVICE_CODE` artifacts and produces JUnit 5 unit tests (service layer, Mockito) and MockMvc integration tests (controller layer)
+- **`TestWriterAgent`** reads generated `SERVICE_CODE` artifacts and produces JUnit 5 + Mockito unit tests for the service and controller layers; controllers are instantiated directly, so tests run without a Spring context
 - Output saved as `Artifact(TEST_CODE)`
 
 ### Phase 3.4 — Doc Gen Agent
@@ -350,7 +352,7 @@ POST   /api/jobs/{id}/architect                    Phase 2: LLM → service boun
 
 # Code generation (per boundary)
 POST   /api/jobs/{id}/generate-service/{bid}       Phase 3: LLM → microservice + repair
-POST   /api/jobs/{id}/write-tests/{bid}            Phase 3: LLM → JUnit 5 + MockMvc
+POST   /api/jobs/{id}/write-tests/{bid}            Phase 3: LLM → JUnit 5 + Mockito
 POST   /api/jobs/{id}/generate-docs/{bid}          Phase 3: LLM → OpenAPI + ADR + Runbook
 
 # Bundle + download
@@ -437,6 +439,15 @@ Per-run analysis is in [`docs/PROJECT_GUIDE.md`](docs/PROJECT_GUIDE.md) and [`do
 - **No cross-model judging yet.** No OpenAI key was available, so `CrossModelJudge` ran in degraded mode — Claude judged Claude output for both systems — and the GPT-4o baseline was skipped. (`eval_metrics.judge_model` still records the *intended* judge, `gpt-4o`, for these rows.)
 - **Service-naming leak.** The `ArchitectAgent` prompt uses `owner-service` / `vet-service` as naming examples, and the model reuses them for unrelated clusters. In HikariCP (job 34) and jforum3 (job 35) this produced final services named after spring-petclinic, with petclinic-style entities (`Pet`, `Visit`) in the generated code, which affects those runs' results.
 - **Partial scope.** n = 6, too small for the planned Wilcoxon tests; the dbeaver run covers only the `org.jkiss.dbeaver.model` module, and BroadleafCommerce (the large-tier repo) is still pending.
+- **Silent failures at scale (BroadleafCommerce).** Job 42 reported `DONE` after 21 seconds with zero boundaries and zero artifacts: `BenchmarkSpec` pointed at a source directory that did not exist, so every stage had nothing to fail on (fixed in `BenchmarkSpec`). The validation re-run (job 43, ~3,000 classes) exposed a second issue: Louvain produced 399 clusters, and the Architect agent's single JSON response truncated, so most clusters were never assigned to a service. `ArchitectAgent.validate()` only logs a warning for missing clusters, so no BroadleafCommerce result is reported until cluster naming is batched.
+
+### Next steps
+
+- **Behavioural equivalence** — replay recorded traffic from the original system against the migrated services, plus differential tests, so the evaluation checks that the new system does what the old one did.
+- **Fair judging** — score both systems on the same rubric and inputs, with a judge from a different model family (`OPENAI_API_KEY`), and run the GPT-4o baseline.
+- **Scale** — batch the Architect agent's cluster naming (with retries and fallback assignment) so large repositories are covered in full, then run BroadleafCommerce properly.
+- **Prompt hygiene** — remove the petclinic naming examples from the Architect prompt and re-run the affected repos.
+- **Full benchmark** — complete the remaining 14 repos of the 20-repo suite and compute Wilcoxon significance tests.
 
 ---
 
