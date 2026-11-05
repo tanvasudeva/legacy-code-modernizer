@@ -32,6 +32,7 @@ jobs:
       - name: Run unit tests (no infrastructure required)
         run: |
           mvn test -pl evaluator,agents -am \
+            -Dsurefire.failIfNoSpecifiedTests=false \
             -Dtest="BaselineCodeExtractorTest,CohesionMetricTest,MetricTest,\
           ArchitectAgentTest,DocGenAgentTest,RefactorerAgentTest,\
           ServiceGeneratorAgentTest,TestWriterAgentTest" \

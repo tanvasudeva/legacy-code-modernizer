@@ -54,7 +54,7 @@ export default function CodeViewer({ artifacts }: Props) {
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
       {/* Tab bar */}
       <div className="flex overflow-x-auto bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-        {hasTabs.map((t, i) => {
+        {hasTabs.map((t) => {
           const origIdx = TABS.indexOf(t)
           return (
             <button

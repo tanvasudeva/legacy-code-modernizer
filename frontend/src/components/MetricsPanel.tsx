@@ -107,7 +107,7 @@ export default function MetricsPanel({ metrics, repairStats }: Props) {
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} width={80} />
               <Tooltip
                 contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8, fontSize: 12 }}
-                formatter={(v: number) => [`${v}%`, '']}
+                formatter={(v) => [`${v ?? 0}%`, '']}
               />
               <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} />
             </BarChart>

@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -39,6 +40,7 @@ class ServiceGeneratorAgentTest {
 
     ServiceGeneratorAgent agent;
     AtomicLong idSeq = new AtomicLong(1);
+    List<Artifact> savedArtifacts = new ArrayList<>();
 
     private static final ServiceBoundary OWNER_BOUNDARY = ServiceBoundary.builder()
             .id(10L)
@@ -112,8 +114,14 @@ class ServiceGeneratorAgentTest {
                     .artifactType(a.getArtifactType()).classFqn(a.getClassFqn())
                     .filePath(a.getFilePath()).content(a.getContent())
                     .build();
+            savedArtifacts.add(a);
             return a;
         });
+        // The agent re-reads its artifacts after the repair loop
+        when(artifactRepository.findByJobIdAndClassFqn(anyLong(), anyString()))
+                .thenAnswer(inv -> List.copyOf(savedArtifacts));
+        when(repairService.compileWithRepair(any(), anyList(), anyInt())).thenReturn(
+                new CompilationRepairService.CompilationRepairResult(true, true, 1, List.of()));
     }
 
     private void stubLlm(String text) {
